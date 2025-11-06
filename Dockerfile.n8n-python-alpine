@@ -1,0 +1,43 @@
+# Railway n8n + Python環境統合 Dockerfile (Alpine版 - 最適化)
+# Build timestamp: 2025-11-02 01:39 JST
+FROM n8nio/n8n:latest
+
+# rootユーザーで追加パッケージをインストール
+USER root
+
+# Python + FFmpeg + プリビルドパッケージのインストール
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    py3-numpy \
+    py3-pillow \
+    ffmpeg
+
+# Pythonシンボリックリンク作成
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# 軽量な追加パッケージのみpipでインストール（プリビルド版を使うのでビルド不要）
+RUN pip3 install --no-cache-dir --break-system-packages \
+    moviepy==1.0.3 \
+    decorator==4.4.2 \
+    tqdm==4.62.0 \
+    imageio==2.9.0 \
+    imageio-ffmpeg==0.4.5 \
+    requests==2.31.0
+
+# WF7 render_video.pyとテンプレートをコピー
+RUN mkdir -p /app
+COPY workflows/wf7-video-renderer/render_video.py /app/render_video.py
+COPY workflows/wf7-video-renderer/templates /app/templates
+
+# 実行権限付与
+RUN chmod +x /app/render_video.py
+
+# n8nユーザーに戻す
+USER node
+
+# n8nのデフォルトポート
+EXPOSE 5678
+
+# n8nのデフォルトエントリーポイントを維持
+CMD ["n8n"]

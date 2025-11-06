@@ -1,0 +1,51 @@
+# Railway n8n + Python環境統合 Dockerfile (Debian版)
+# ベースイメージ: n8n公式の最新版 (Debian Linux)
+FROM n8nio/n8n:latest-debian
+
+# rootユーザーで追加パッケージをインストール
+USER root
+
+# Debian Busterリポジトリをアーカイブに変更（Busterは公式から削除済み）
+RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i '/security.debian.org/d' /etc/apt/sources.list && \
+    sed -i 's|buster-updates|buster|g' /etc/apt/sources.list
+
+# システムパッケージの更新とPython + FFmpegのインストール
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pythonシンボリックリンク作成
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# pip3とsetuptoolsをアップグレード（古いDebianリポジトリ対応）
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
+
+# Python依存関係のインストール（FastAPIサーバー用）
+COPY workflows/wf7-video-renderer/requirements-server.txt /tmp/requirements-server.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements-server.txt
+
+# WF7 レンダラーとテンプレートをコピー
+RUN mkdir -p /app
+COPY workflows/wf7-video-renderer/render_server.py /app/render_server.py
+COPY workflows/wf7-video-renderer/render_video_ffmpeg.py /app/render_video_ffmpeg.py
+COPY workflows/wf7-video-renderer/templates /app/templates
+
+# 起動スクリプトをコピー
+COPY start-services.sh /app/start-services.sh
+
+# 実行権限付与
+RUN chmod +x /app/render_server.py /app/render_video_ffmpeg.py /app/start-services.sh
+
+# n8nユーザーに戻す
+USER node
+
+# n8nのデフォルトポート + FFmpegサーバーポート
+EXPOSE 5678 8000
+
+# ENTRYPOINT は n8n の tini を保持
+# CMD を start-services.sh に変更
+CMD ["/bin/bash", "/app/start-services.sh"]

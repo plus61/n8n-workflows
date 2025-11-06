@@ -1,0 +1,41 @@
+{
+  "category": "content-creation",
+  "displayName": "Content Creation",
+  "description": "Automated content generation, SEO optimization, and publishing workflows",
+  "tags": ["content", "writing", "seo", "blog", "social-media", "ai"],
+  "icon": "✍️",
+  "commonNodes": [
+    "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+    "@n8n/n8n-nodes-langchain.agent",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.set",
+    "n8n-nodes-base.googleDocs"
+  ],
+  "useCases": [
+    {
+      "name": "Blog Post Generation",
+      "description": "AI-powered blog post creation with SEO optimization"
+    },
+    {
+      "name": "Social Media Content",
+      "description": "Automated social media post generation and scheduling"
+    },
+    {
+      "name": "SEO Optimization",
+      "description": "Content optimization for search engines"
+    }
+  ],
+  "requiredCredentials": [
+    {
+      "name": "OpenAI API",
+      "required": true,
+      "purpose": "Content generation and AI writing"
+    },
+    {
+      "name": "Google Docs",
+      "required": false,
+      "purpose": "Document management and collaboration"
+    }
+  ],
+  "updated": "2025-11-05T00:00:00Z"
+}

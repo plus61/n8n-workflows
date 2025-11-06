@@ -1,0 +1,10 @@
+{
+  "id": "06eepVXbFwzHVP3L",
+  "name": "Advanced Data Processing Pipeline",
+  "active": true,
+  "nodes": 8,
+  "createdAt": "2025-10-30T02:20:50.659Z",
+  "updatedAt": "2025-10-30T09:17:15.888Z",
+  "webhookId": "advanced-pipeline-webhook",
+  "webhookPath": "advanced-pipeline"
+}

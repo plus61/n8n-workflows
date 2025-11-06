@@ -1,0 +1,28 @@
+{
+  "category": "social-media",
+  "displayName": "Social Media",
+  "description": "Social media management and automation workflows",
+  "tags": ["social", "twitter", "instagram", "facebook", "scheduling", "posting"],
+  "icon": "📱",
+  "commonNodes": [
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.schedule",
+    "n8n-nodes-base.set"
+  ],
+  "useCases": [
+    {
+      "name": "Scheduled Posting",
+      "description": "Automate social media post scheduling"
+    },
+    {
+      "name": "Cross-Platform Sharing",
+      "description": "Share content across multiple platforms"
+    },
+    {
+      "name": "Social Media Monitoring",
+      "description": "Track mentions and engagement"
+    }
+  ],
+  "requiredCredentials": [],
+  "updated": "2025-11-05T00:00:00Z"
+}

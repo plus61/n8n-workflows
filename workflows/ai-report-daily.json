@@ -1,0 +1,435 @@
+{
+  "name": "AIレポート自動生成（日次）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-daily",
+      "name": "Schedule Trigger - 毎日9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.TASK_U_API_URL}}/kpi/daily",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "retry": {
+            "maxTries": 3,
+            "waitBetween": 1000
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-get-kpi-data",
+      "name": "KPIデータ取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "task_u_api_token",
+          "name": "Task U API Token"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// KPIデータを整形し、達成率を計算\nconst data = $input.all()[0].json;\n\n// データが取得できなかった場合のフォールバック\nif (!data || !data.kpis) {\n  return [{\n    json: {\n      error: true,
+      useFallback: true,\n      message: \"KPI data not available, using fallback\"\n    }\n  }];\n}\n\nconst kpis = data.kpis;\n\n// 達成率計算\nconst pvAchievement = ((kpis.pv.current / kpis.pv.target) * 100).toFixed(1);\nconst cvrAchievement = ((kpis.cvr.current / kpis.cvr.target) * 100).toFixed(1);\n\n// 前日比・前週比計算\nconst pvChangeYesterday = ((kpis.pv.current - kpis.pv.yesterday) / kpis.pv.yesterday * 100).toFixed(1);\nconst pvChangeWeek = ((kpis.pv.current - kpis.pv.last_week) / kpis.pv.last_week * 100).toFixed(1);\nconst cvrChangeYesterday = ((kpis.cvr.current - kpis.cvr.yesterday) / kpis.cvr.yesterday * 100).toFixed(1);\n\n// GPT-4プロンプト用データ\nreturn [{\n  json: {\n    date: data.date,\n    period: data.period,\n    // 整形済みKPI\n    current_pv: kpis.pv.current.toLocaleString(),\n    target_pv: kpis.pv.target.toLocaleString(),\n    pv_achievement: pvAchievement,\n    current_cvr: kpis.cvr.current,\n    target_cvr: kpis.cvr.target,\n    cvr_achievement: cvrAchievement,\n    line_friends: kpis.line.friends,\n    line_open_rate: kpis.line.open_rate,\n    line_click_rate: kpis.line.click_rate,\n    note_articles: kpis.note.articles,\n    top_article_title: kpis.note.top_articles[0]?.title || \"N/A\",\n    top_article_pv: kpis.note.top_articles[0]?.pv || 0,\n    top_article_cv: kpis.note.top_articles[0]?.cv || 0,\n    sns_posts: kpis.sns.posts,\n    sns_engagement: kpis.sns.engagement_rate,\n    demo_reservations: kpis.demo.reservations,\n    demo_conversions: kpis.demo.conversions,\n    conversion_rate: kpis.demo.conversion_rate,\n    // 変化率\n    pv_change_yesterday: pvChangeYesterday,\n    pv_change_week: pvChangeWeek,\n    cvr_change_yesterday: cvrChangeYesterday,\n    // アラート判定用\n    alert_pv_drop: parseFloat(pvChangeYesterday) < -20,\n    alert_cvr_drop: parseFloat(cvrChangeYesterday) < -15,\n    // 生データも保持\n    raw_data: kpis\n  }\n}];"
+      },
+      "id": "function-format-data",
+      "name": "データ整形",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo",
+        "messages": {
+          "values": [
+            {
+              "content": "={{\"あなたはMEO集客自動化プロジェクトのデータアナリストです。\\n以下のKPIデータを分析し、改善提案を行ってください。\\n\\n【KPIデータ】\\n- PV: \" + $json.current_pv + \" / 目標22,300 (\" + $json.pv_achievement + \"%)\\n- CVR: \" + $json.current_cvr + \"% / 目標30% (\" + $json.cvr_achievement + \"%)\\n- LINE友だち: \" + $json.line_friends + \"人（開封率\" + $json.line_open_rate + \"%, クリック率\" + $json.line_click_rate + \"%）\\n- note記事: \" + $json.note_articles + \"本\\n- 人気記事: 『\" + $json.top_article_title + \"』（\" + $json.top_article_pv + \"PV, \" + $json.top_article_cv + \"CV）\\n- SNS投稿: \" + $json.sns_posts + \"本（エンゲージメント率\" + $json.sns_engagement + \"%）\\n- デモ予約: \" + $json.demo_reservations + \"件\\n- 成約率: \" + $json.conversion_rate + \"%\\n\\n【トレンド】\\n- PV前日比: \" + $json.pv_change_yesterday + \"%\\n- PV前週比: \" + $json.pv_change_week + \"%\\n- CVR前日比: \" + $json.cvr_change_yesterday + \"%\\n\\n【分析観点】\\n1. 目標達成度の評価\\n2. 前週比・前月比のトレンド分析\\n3. 問題点・ボトルネックの特定\\n4. 改善提案（優先度順、Top 5）\\n\\n【出力形式】\\n以下の構造化されたMarkdown形式で出力してください：\\n## 📊 KPI達成度サマリー\\n## 📈 トレンド分析\\n## ⚠️ 問題点・ボトルネック\\n## 💡 改善提案（優先度順）\\n### 提案1: [タイトル]\\n- 期待効果: ...\\n- 実行難易度: [低/中/高]\\n- 推奨実施時期: ...\\n- 自動実行: [可能/不可能]\\n\\n(提案2-5も同様)\\n\\n## 🤖 自動実行予定\\n(自動実行可能な提案をリスト)\\n\\n## 📌 手動確認が必要な施策\\n(手動確認必要な提案をリスト)\"}}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 2500
+        }
+      },
+      "id": "openai-gpt4-analysis",
+      "name": "GPT-4 AI分析",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.4,
+      "position": [900, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai_api_key",
+          "name": "OpenAI API"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// GPT-4のレポートをパースし、改善提案を抽出\nconst input = $input.all()[0].json;\n\n// GPT-4が失敗した場合のフォールバック\nif (!input.choices || !input.choices[0]) {\n  const fallbackReport = `# 📊 日次レポート - ${$('データ整形').item.json.date}\\n\\n## ⚠️ システムエラー\\n\\nGPT-4 APIが一時的に利用できません。\\n\\n### 基本KPI\\n- PV: ${$('データ整形').item.json.current_pv} (${$('データ整形').item.json.pv_achievement}%)\\n- CVR: ${$('データ整形').item.json.current_cvr}% (${$('データ整形').item.json.cvr_achievement}%)\\n\\n詳細な分析は次回レポートで提供されます。`;\n  \n  return [{\n    json: {\n      report_markdown: fallbackReport,\n      proposals: [],\n      auto_executable: [],\n      manual_required: [],\n      is_fallback: true,\n      generated_at: new Date().toISOString(),\n      kpi_data: $('データ整形').item.json\n    }\n  }];\n}\n\nconst report = input.choices[0].message.content;\n\n// 改善提案を抽出（正規表現）\nconst proposalRegex = /### 提案(\\d+):\\s*(.+?)\\n-\\s*期待効果:\\s*(.+?)\\n-\\s*実行難易度:\\s*(.+?)\\n-\\s*推奨実施時期:\\s*(.+?)\\n-\\s*自動実行:\\s*(.+)/g;\nconst proposals = [];\nlet match;\n\nwhile ((match = proposalRegex.exec(report)) !== null) {\n  proposals.push({\n    number: parseInt(match[1]),\n    title: match[2].trim(),\n    expected_effect: match[3].trim(),\n    difficulty: match[4].trim(),\n    timing: match[5].trim(),\n    auto_executable: match[6].trim() === '可能'\n  });\n}\n\n// 自動実行可能/手動確認必要に分類\nconst autoExecutable = proposals.filter(p => p.auto_executable);\nconst manualRequired = proposals.filter(p => !p.auto_executable);\n\nreturn [{\n  json: {\n    report_markdown: report,\n    proposals: proposals,\n    auto_executable: autoExecutable,\n    manual_required: manualRequired,\n    generated_at: new Date().toISOString(),\n    kpi_data: $('データ整形').item.json\n  }\n}];"
+      },
+      "id": "function-parse-report",
+      "name": "レポート構造化",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "resource": "page",
+        "databaseId": "={{$env.NOTION_REPORT_DB_ID}}",
+        "title": "={{\"日次レポート \" + $('データ整形').item.json.date}}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Period",
+              "selectValue": "daily"
+            },
+            {
+              "key": "Generated_At",
+              "dateValue": "={{$json.generated_at}}"
+            },
+            {
+              "key": "PV_Achievement",
+              "numberValue": "={{parseFloat($('データ整形').item.json.pv_achievement)}}"
+            },
+            {
+              "key": "CVR_Current",
+              "numberValue": "={{parseFloat($('データ整形').item.json.current_cvr)}}"
+            },
+            {
+              "key": "Proposals_Count",
+              "numberValue": "={{$json.proposals.length}}"
+            },
+            {
+              "key": "Auto_Executed",
+              "numberValue": "={{$json.auto_executable.length}}"
+            },
+            {
+              "key": "Manual_Required",
+              "numberValue": "={{$json.manual_required.length}}"
+            },
+            {
+              "key": "Status",
+              "selectValue": "generated"
+            }
+          ]
+        },
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "richText": "={{$json.report_markdown}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notion-save-report",
+      "name": "Notionレポート保存",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1340, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "notion_api",
+          "name": "Notion API"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://notify-api.line.me/api/notify",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "lineNotifyOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{\"📊 日次レポート完了\\n\\n【達成度】\\nPV: \" + $('データ整形').item.json.pv_achievement + \"% | CVR: \" + $('データ整形').item.json.cvr_achievement + \"%\\n\\n【Top提案】\\n🔥 \" + ($('レポート構造化').item.json.proposals[0]?.title || \"なし\") + \"\\n⚡ \" + ($('レポート構造化').item.json.proposals[1]?.title || \"なし\") + \"\\n\\n詳細: \" + $('Notionレポート保存').item.json.url}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "line-notify",
+      "name": "LINE通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "credentials": {
+        "lineNotifyOAuth2Api": {
+          "id": "line_notify",
+          "name": "LINE Notify"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combineOperation": "any"
+          },
+          "conditions": [
+            {
+              "id": "auto-executable-check",
+              "leftValue": "={{$('レポート構造化').item.json.auto_executable.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-auto-executable",
+      "name": "自動実行判定",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.TASK_W_WEBHOOK_URL}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "proposals",
+              "value": "={{JSON.stringify($('レポート構造化').item.json.auto_executable)}}"
+            },
+            {
+              "name": "report_id",
+              "value": "={{$('Notionレポート保存').item.json.id}}"
+            },
+            {
+              "name": "date",
+              "value": "={{$('データ整形').item.json.date}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-trigger-task-w",
+      "name": "タスクW/X連携",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combineOperation": "any"
+          },
+          "conditions": [
+            {
+              "id": "pv-alert",
+              "leftValue": "={{$('データ整形').item.json.alert_pv_drop}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "cvr-alert",
+              "leftValue": "={{$('データ整形').item.json.alert_cvr_drop}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-alert",
+      "name": "アラート判定",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://notify-api.line.me/api/notify",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "lineNotifyOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{\"🚨 緊急アラート\\n\\n\" + ($('データ整形').item.json.alert_pv_drop ? \"PV急減: 前日比\" + $('データ整形').item.json.pv_change_yesterday + \"%\\n\" : \"\") + ($('データ整形').item.json.alert_cvr_drop ? \"CVR急減: 前日比\" + $('データ整形').item.json.cvr_change_yesterday + \"%\\n\" : \"\") + \"\\nレポート: \" + $('Notionレポート保存').item.json.url}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "line-alert",
+      "name": "LINE緊急アラート",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 500],
+      "credentials": {
+        "lineNotifyOAuth2Api": {
+          "id": "line_notify",
+          "name": "LINE Notify"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger - 毎日9:00": {
+      "main": [
+        [
+          {
+            "node": "KPIデータ取得",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KPIデータ取得": {
+      "main": [
+        [
+          {
+            "node": "データ整形",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "データ整形": {
+      "main": [
+        [
+          {
+            "node": "GPT-4 AI分析",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "アラート判定",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4 AI分析": {
+      "main": [
+        [
+          {
+            "node": "レポート構造化",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "レポート構造化": {
+      "main": [
+        [
+          {
+            "node": "Notionレポート保存",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notionレポート保存": {
+      "main": [
+        [
+          {
+            "node": "LINE通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LINE通知": {
+      "main": [
+        [
+          {
+            "node": "自動実行判定",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "自動実行判定": {
+      "main": [
+        [
+          {
+            "node": "タスクW/X連携",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "アラート判定": {
+      "main": [
+        [
+          {
+            "node": "LINE緊急アラート",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-10-26T00:00:00.000Z",
+      "updatedAt": "2025-10-26T00:00:00.000Z",
+      "id": "ai-report",
+      "name": "AI Report"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-26T00:00:00.000Z",
+  "versionId": "1.0.0"
+}
+

@@ -1,0 +1,20 @@
+{
+  "segments": [
+    {
+      "duration": 10,
+      "telop": "FFmpeg直接実行テスト！"
+    },
+    {
+      "duration": 8,
+      "telop": "高速レンダリングを実現"
+    },
+    {
+      "duration": 12,
+      "telop": "12倍の速度改善を目指す"
+    },
+    {
+      "duration": 10,
+      "telop": "Phase1ハイブリッド方式"
+    }
+  ]
+}

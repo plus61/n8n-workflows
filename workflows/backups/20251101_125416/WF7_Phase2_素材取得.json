@@ -1,0 +1,10 @@
+{
+  "id": "sGjN9Vqw4pGTLmaX",
+  "name": "WF7 Phase2: 素材取得",
+  "active": true,
+  "nodes": 15,
+  "createdAt": "2025-10-29T14:25:49.067Z",
+  "updatedAt": "2025-11-01T01:16:34.381Z",
+  "webhookId": "685e811e-859e-44b3-b6ec-415e3faae421",
+  "webhookPath": "wf7-phase2-assets"
+}

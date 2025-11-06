@@ -1,0 +1,10 @@
+{
+  "id": "KkiF386PmAVaY1mA",
+  "name": "WF7 Phase3: 音声・字幕生成(オプション)",
+  "active": true,
+  "nodes": 12,
+  "createdAt": "2025-10-29T14:25:57.934Z",
+  "updatedAt": "2025-11-01T01:16:50.606Z",
+  "webhookId": "wf7-phase3-audio-webhook",
+  "webhookPath": "wf7-phase3-audio"
+}

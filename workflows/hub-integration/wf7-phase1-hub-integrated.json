@@ -1,0 +1,294 @@
+{
+  "name": "WF7 Phase1: SNS動画台本整形 (Hub統合版)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase1-video-script",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ce645465-8143-4bfd-ab5d-ba22fec3f74b",
+      "name": "WF6完了Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-1008, 16],
+      "webhookId": "wf7-phase1-video-script"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nreturn {\n  json: {\n    articleId: body.articleId,\n    title: body.title,\n    keyPoints: body.keyPoints,\n    createdAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "0e8a96c2-2787-4d6a-a814-0be37c95bb62",
+      "name": "入力データ整形",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, 16]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch Hub Context Node\nconst articleId = $input.first().json.articleId;\n\nif (!articleId) {\n  throw new Error('Article ID is required to fetch Hub context');\n}\n\nconst NOTION_TOKEN = process.env.NOTION_API_TOKEN;\nconst HUB_DB_ID = '2a268d5c-2986-813c-a8e5-eba390fb71fd';\n\nconst searchPayload = {\n  filter: {\n    property: 'Article ID',\n    rich_text: {\n      equals: articleId\n    }\n  }\n};\n\ntry {\n  const response = await $http.post(\n    `https://api.notion.com/v1/databases/${HUB_DB_ID}/query`,\n    {\n      headers: {\n        'Authorization': `Bearer ${NOTION_TOKEN}`,\n        'Notion-Version': '2022-06-28',\n        'Content-Type': 'application/json'\n      },\n      body: searchPayload\n    }\n  );\n\n  let hubPageId;\n  let isNewEntry = false;\n  let existingStatus = 'Draft';\n\n  if (!response.results || response.results.length === 0) {\n    // 新規作成\n    const createPayload = {\n      parent: { database_id: HUB_DB_ID },\n      properties: {\n        'Title': {\n          title: [{\n            text: {\n              content: $input.first().json.title || `Article ${articleId}`\n            }\n          }]\n        },\n        'Article ID': {\n          rich_text: [{\n            text: {\n              content: articleId\n            }\n          }]\n        },\n        'Workflow Status': {\n          select: {\n            name: 'Draft'\n          }\n        },\n        'Created At': {\n          date: {\n            start: new Date().toISOString()\n          }\n        }\n      }\n    };\n    \n    const createResponse = await $http.post(\n      'https://api.notion.com/v1/pages',\n      {\n        headers: {\n          'Authorization': `Bearer ${NOTION_TOKEN}`,\n          'Notion-Version': '2022-06-28',\n          'Content-Type': 'application/json'\n        },\n        body: createPayload\n      }\n    );\n    \n    hubPageId = createResponse.id;\n    isNewEntry = true;\n  } else {\n    hubPageId = response.results[0].id;\n    existingStatus = response.results[0].properties['Workflow Status']?.select?.name || 'Draft';\n  }\n\n  return {\n    json: {\n      ...($input.first().json),\n      hubContext: {\n        hubPageId,\n        articleId,\n        isNewEntry,\n        existingStatus\n      }\n    }\n  };\n} catch (error) {\n  throw new Error(`Hub context fetch failed: ${error.message}`);\n}"
+      },
+      "id": "hub-context-node",
+      "name": "Fetch Hub Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-704, 16]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst payload = {\n  model: 'gpt-4o-mini',\n  messages: [\n    {\n      role: 'system',\n      content: 'あなたは縦型ショート動画の台本作成の専門家です。30-45秒の動画スクリプトをJSON形式で生成してください。'\n    },\n    {\n      role: 'user',\n      content: `以下のnote記事情報から動画スクリプトを生成してください。\n\n記事タイトル: ${data.title}\nキーポイント: ${data.keyPoints.join(', ')}\n\n要件:\n- 4セクション構成:Hook(0-10秒)/Pain(10-20秒)/Solution(20-35秒)/CTA(35-45秒)\n- 各セクションに、テロップ文、読み上げ文、アセットタグを含める\n\nJSON形式で出力してください`\n    }\n  ],\n  temperature: 0.7,\n  response_format: { type: 'json_object' }\n};\n\nreturn {\n  json: {\n    originalData: data,\n    gptPayload: payload\n  }\n};"
+      },
+      "id": "3f7b15af-1fdb-4a60-9a1e-27bfe3f7d749",
+      "name": "GPTペイロード作成",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-512, 16]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.gptPayload }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "8fd60819-7427-4ec2-a46f-1cd502714fb1",
+      "name": "GPT API呼び出し",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-320, 16]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json.choices[0].message.content;\nconst scriptData = JSON.parse(response);\n\nconst payloadNode = $('GPTペイロード作成').first().json;\nconst inputData = payloadNode.originalData;\n\nconst assetTags = scriptData.segments ? scriptData.segments.map(s => s.assetTag).filter(Boolean) : [];\n\nreturn {\n  json: {\n    articleId: inputData.articleId,\n    title: inputData.title,\n    scriptData,\n    assetTags,\n    createdAt: inputData.createdAt,\n    hubContext: inputData.hubContext\n  }\n};"
+      },
+      "id": "02639461-5819-46a4-b04b-fcedb5c224fc",
+      "name": "スクリプトJSON解析",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-128, 16]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Hub Status Node\nconst data = $input.first().json;\nconst hubContext = data.hubContext;\n\nif (!hubContext || !hubContext.hubPageId) {\n  throw new Error('Hub context is missing');\n}\n\nconst scriptUrl = `https://n8n-python-production-344b.up.railway.app/webhook/wf7-video-script?articleId=${data.articleId}`;\n\nconst updatePayload = {\n  properties: {\n    'Workflow Status': {\n      select: {\n        name: 'ScriptReady'\n      }\n    },\n    'Script JSON': {\n      url: scriptUrl\n    },\n    'Latest Execution ID': {\n      rich_text: [{\n        text: {\n          content: $execution.id || 'manual-' + Date.now()\n        }\n      }]\n    },\n    'Updated At': {\n      date: {\n        start: new Date().toISOString()\n      }\n    }\n  }\n};\n\nreturn {\n  json: {\n    hubPageId: hubContext.hubPageId,\n    updatePayload,\n    scriptData: data.scriptData,\n    articleId: data.articleId,\n    title: data.title\n  }\n};"
+      },
+      "id": "update-hub-status",
+      "name": "Update Hub Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [64, 16]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.hubPageId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_API_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.updatePayload }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-hub-db",
+      "name": "Update Hub DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [256, 16]
+    },
+    {
+      "parameters": {
+        "jsCode": "const notionResponse = $input.first().json;\nconst updateHubNode = $('Update Hub Status').first().json;\n\nconst scriptJson = {\n  articleId: updateHubNode.articleId,\n  version: '1.0',\n  createdAt: new Date().toISOString(),\n  ...updateHubNode.scriptData\n};\n\nreturn {\n  json: {\n    articleId: updateHubNode.articleId,\n    title: updateHubNode.title,\n    hubPageId: updateHubNode.hubPageId,\n    hubPageUrl: notionResponse.url,\n    scriptJson,\n    status: 'ScriptReady'\n  }\n};"
+      },
+      "id": "23513fe1-cc2b-4214-be40-f915d3a398b3",
+      "name": "ScriptJSON生成",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [448, 16]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.SLACK_WEBHOOK_URL }}xsTUtxvgCmGXMUSs1YeexI",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {text: '✅ WF7 Phase1完了 (Hub統合版)\\n\\n📄 ' + $json.title + '\\n🆔 ' + $json.articleId + '\\n🎯 Status: ' + $json.status + '\\n🔗 ' + $json.hubPageUrl} }}",
+        "options": {}
+      },
+      "id": "bbfd2efa-3d5e-4137-8081-a2103060eade",
+      "name": "Slack通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [640, 16]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'success', message: 'WF7 Phase1 completed with Hub integration', articleId: $json.articleId, title: $json.title, hubPageId: $json.hubPageId, workflowStatus: 'ScriptReady'} }}",
+        "options": {}
+      },
+      "id": "5e0f08e6-7145-486e-8c7d-83e27a49efd9",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [832, 16]
+    }
+  ],
+  "connections": {
+    "WF6完了Webhook": {
+      "main": [
+        [
+          {
+            "node": "入力データ整形",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "入力データ整形": {
+      "main": [
+        [
+          {
+            "node": "Fetch Hub Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Hub Context": {
+      "main": [
+        [
+          {
+            "node": "GPTペイロード作成",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPTペイロード作成": {
+      "main": [
+        [
+          {
+            "node": "GPT API呼び出し",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT API呼び出し": {
+      "main": [
+        [
+          {
+            "node": "スクリプトJSON解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "スクリプトJSON解析": {
+      "main": [
+        [
+          {
+            "node": "Update Hub Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Hub Status": {
+      "main": [
+        [
+          {
+            "node": "Update Hub DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Hub DB": {
+      "main": [
+        [
+          {
+            "node": "ScriptJSON生成",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ScriptJSON生成": {
+      "main": [
+        [
+          {
+            "node": "Slack通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack通知": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

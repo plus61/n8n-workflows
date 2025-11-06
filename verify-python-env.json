@@ -1,0 +1,79 @@
+{
+  "name": "Verify Python Environment",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "verify-python-env"
+    },
+    {
+      "parameters": {
+        "command": "python --version && python3 --version"
+      },
+      "id": "check-python",
+      "name": "Check Python Version",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "command": "pip3 list | grep -E '(moviepy|numpy|Pillow|imageio)'"
+      },
+      "id": "check-packages",
+      "name": "Check Packages",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "command": "ls -la /app/render_video.py && python /app/render_video.py --help"
+      },
+      "id": "check-renderer",
+      "name": "Check Renderer",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Python Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Python Version": {
+      "main": [
+        [
+          {
+            "node": "Check Packages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Packages": {
+      "main": [
+        [
+          {
+            "node": "Check Renderer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

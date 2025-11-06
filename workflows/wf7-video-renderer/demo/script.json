@@ -1,0 +1,24 @@
+{
+  "articleId": "demo-article",
+  "templateId": "default",
+  "segments": [
+    {
+      "segmentIndex": 0,
+      "sceneType": "hook",
+      "telop": "AIで集客を加速！",
+      "duration": 1.0
+    },
+    {
+      "segmentIndex": 1,
+      "sceneType": "solution",
+      "telop": "自動で台本から動画へ。",
+      "duration": 1.0
+    },
+    {
+      "segmentIndex": 2,
+      "sceneType": "cta",
+      "telop": "今すぐワークフローを導入しよう。",
+      "duration": 1.0
+    }
+  ]
+}

@@ -1,0 +1,439 @@
+{
+  "name": "WF8: SNS投稿自動化",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf8-sns-posting",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger-wf8",
+      "name": "WF8-SNS投稿 Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "wf8-sns-posting-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body || input;\n\nconst articleId = body.articleId;\nconst notionPageId = body.notionPageId;\nconst title = body.title;\nconst videoUrl = body.videoUrl;\nconst thumbUrl = body.thumbUrl;\n\nif (!articleId || !videoUrl || !title) {\n  throw new Error('articleId, videoUrl, and title are required');\n}\n\nreturn {\n  json: {\n    articleId,\n    notionPageId,\n    title,\n    videoUrl,\n    thumbUrl: thumbUrl || '',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "input-parse-wf8",
+      "name": "入力データ解析",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"gpt-4\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"あなたはSNS投稿の専門家です。動画タイトルから魅力的な投稿文を3パターン作成してください。1) Twitter/X用(280文字以内、ハッシュタグ3-5個)、2) LinkedIn用(400文字以内、プロフェッショナル)、3) Facebook用(200文字以内、親しみやすい)。JSON形式で返してください: {twitter: string, linkedin: string, facebook: string}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"動画タイトル: \" + $json.title + \"\\n\\n動画URL: \" + $json.videoUrl\n    }\n  ],\n  \"temperature\": 0.7,\n  \"response_format\": { \"type\": \"json_object\" }\n} }}",
+        "options": {}
+      },
+      "id": "ai-caption-generation",
+      "name": "AI Caption Generation (GPT-4)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst prevData = $('入力データ解析').first().json;\n\nlet captions;\ntry {\n  const content = response.choices[0].message.content;\n  captions = JSON.parse(content);\n} catch (error) {\n  // Fallback captions\n  captions = {\n    twitter: `${prevData.title} 🎬\\n\\n動画をチェック👇\\n${prevData.videoUrl}\\n\\n#動画 #AI #自動化`,\n    linkedin: `新しい動画を公開しました！\\n\\n${prevData.title}\\n\\nぜひご覧ください: ${prevData.videoUrl}`,\n    facebook: `${prevData.title}\\n\\n詳しくはこちら: ${prevData.videoUrl}`\n  };\n}\n\nreturn {\n  json: {\n    ...prevData,\n    captions: captions\n  }\n};"
+      },
+      "id": "caption-parse",
+      "name": "Caption Parsing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "platform-twitter",
+              "name": "platform",
+              "value": "twitter",
+              "type": "string"
+            },
+            {
+              "id": "caption-twitter",
+              "name": "caption",
+              "value": "={{ $json.captions.twitter }}",
+              "type": "string"
+            },
+            {
+              "id": "video-url",
+              "name": "videoUrl",
+              "value": "={{ $json.videoUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "article-id",
+              "name": "articleId",
+              "value": "={{ $json.articleId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-twitter",
+      "name": "Twitter投稿準備",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "platform-linkedin",
+              "name": "platform",
+              "value": "linkedin",
+              "type": "string"
+            },
+            {
+              "id": "caption-linkedin",
+              "name": "caption",
+              "value": "={{ $json.captions.linkedin }}",
+              "type": "string"
+            },
+            {
+              "id": "video-url",
+              "name": "videoUrl",
+              "value": "={{ $json.videoUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "article-id",
+              "name": "articleId",
+              "value": "={{ $json.articleId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-linkedin",
+      "name": "LinkedIn投稿準備",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "platform-facebook",
+              "name": "platform",
+              "value": "facebook",
+              "type": "string"
+            },
+            {
+              "id": "caption-facebook",
+              "name": "caption",
+              "value": "={{ $json.captions.facebook }}",
+              "type": "string"
+            },
+            {
+              "id": "video-url",
+              "name": "videoUrl",
+              "value": "={{ $json.videoUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "article-id",
+              "name": "articleId",
+              "value": "={{ $json.articleId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-facebook",
+      "name": "Facebook投稿準備",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// TODO: Twitter API v2統合\n// 必要な認証情報:\n// - API Key\n// - API Secret\n// - Access Token\n// - Access Token Secret\n\nconst caption = $json.caption;\nconst videoUrl = $json.videoUrl;\n\nreturn {\n  json: {\n    platform: 'twitter',\n    status: 'pending',\n    message: 'Twitter API未実装 - 手動投稿が必要です',\n    caption: caption,\n    videoUrl: videoUrl\n  }\n};"
+      },
+      "id": "twitter-post",
+      "name": "Twitter投稿 (TODO)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// TODO: LinkedIn API統合\n// 必要な認証情報:\n// - OAuth 2.0 Access Token\n// - Person/Organization URN\n\nconst caption = $json.caption;\nconst videoUrl = $json.videoUrl;\n\nreturn {\n  json: {\n    platform: 'linkedin',\n    status: 'pending',\n    message: 'LinkedIn API未実装 - 手動投稿が必要です',\n    caption: caption,\n    videoUrl: videoUrl\n  }\n};"
+      },
+      "id": "linkedin-post",
+      "name": "LinkedIn投稿 (TODO)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// TODO: Facebook Graph API統合\n// 必要な認証情報:\n// - Page Access Token\n// - Page ID\n\nconst caption = $json.caption;\nconst videoUrl = $json.videoUrl;\n\nreturn {\n  json: {\n    platform: 'facebook',\n    status: 'pending',\n    message: 'Facebook API未実装 - 手動投稿が必要です',\n    caption: caption,\n    videoUrl: videoUrl\n  }\n};"
+      },
+      "id": "facebook-post",
+      "name": "Facebook投稿 (TODO)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 420]
+    },
+    {
+      "parameters": {
+        "mode": "mergeByIndex",
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "投稿結果マージ",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.all().map(item => item.json);\nconst originalData = $('Caption Parsing').first().json;\n\nconst summary = {\n  articleId: originalData.articleId,\n  notionPageId: originalData.notionPageId,\n  timestamp: new Date().toISOString(),\n  platforms: results.map(r => ({\n    platform: r.platform,\n    status: r.status,\n    message: r.message,\n    caption: r.caption\n  }))\n};\n\nreturn {\n  json: summary\n};"
+      },
+      "id": "summary-creation",
+      "name": "投稿サマリー作成",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $('入力データ解析').first().json.notionPageId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_API_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"properties\": {\n    \"Status\": {\n      \"select\": {\n        \"name\": \"SNS Posted\"\n      }\n    },\n    \"Posted Platforms\": {\n      \"multi_select\": $json.platforms.map(p => ({ name: p.platform }))\n    }\n  }\n} }}",
+        "options": {}
+      },
+      "id": "notion-update",
+      "name": "Notion投稿記録更新",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "WF8-SNS投稿 Webhook": {
+      "main": [
+        [
+          {
+            "node": "入力データ解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "入力データ解析": {
+      "main": [
+        [
+          {
+            "node": "AI Caption Generation (GPT-4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Caption Generation (GPT-4)": {
+      "main": [
+        [
+          {
+            "node": "Caption Parsing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption Parsing": {
+      "main": [
+        [
+          {
+            "node": "Twitter投稿準備",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LinkedIn投稿準備",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Facebook投稿準備",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter投稿準備": {
+      "main": [
+        [
+          {
+            "node": "Twitter投稿 (TODO)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn投稿準備": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn投稿 (TODO)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook投稿準備": {
+      "main": [
+        [
+          {
+            "node": "Facebook投稿 (TODO)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twitter投稿 (TODO)": {
+      "main": [
+        [
+          {
+            "node": "投稿結果マージ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn投稿 (TODO)": {
+      "main": [
+        [
+          {
+            "node": "投稿結果マージ",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Facebook投稿 (TODO)": {
+      "main": [
+        [
+          {
+            "node": "投稿結果マージ",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "投稿結果マージ": {
+      "main": [
+        [
+          {
+            "node": "投稿サマリー作成",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "投稿サマリー作成": {
+      "main": [
+        [
+          {
+            "node": "Notion投稿記録更新",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion投稿記録更新": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-05T00:00:00.000Z",
+  "versionId": "wf8-v1"
+}

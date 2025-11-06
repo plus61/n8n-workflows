@@ -1,0 +1,1228 @@
+# n8nワークフロー構築ナレッジベース
+
+**作成日**: 2025-10-29
+**最終更新**: 2025-11-04
+**出典**: WF6 (note記事自動生成), WF7 (SNS動画生成パイプライン) 構築・テスト・トラブルシューティング実行から得られた知見
+
+## 目次
+
+1. [HTTP Request Node v4 設定ルール](#1-http-request-node-v4-設定ルール)
+2. [n8n式構文のベストプラクティス](#2-n8n式構文のベストプラクティス)
+3. [ノード参照とデータアクセス](#3-ノード参照とデータアクセス)
+4. [ワークフロー更新戦略](#4-ワークフロー更新戦略)
+5. [テストとデバッグアプローチ](#5-テストとデバッグアプローチ)
+6. [Notion API統合](#6-notion-api統合)
+7. [Webhook設計パターンとRailway制限](#7-webhook設計パターンとrailway制限)
+8. [Execute Command ノードのベストプラクティス](#8-execute-command-ノードのベストプラクティス)
+9. [チェックリスト](#9-チェックリスト)
+
+---
+
+## 1. HTTP Request Node v4 設定ルール
+
+### 🚨 Critical: specifyBody パラメータの正しい使い方
+
+#### ルール1: n8n式構文 `={{ }}` を使う場合は必ず `specifyBody: "json"` を使用
+
+**❌ 間違った設定** (式が評価されない):
+```json
+{
+  "parameters": {
+    "method": "POST",
+    "url": "https://api.example.com/endpoint",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "string",
+    "body": "={{ JSON.stringify({ key: $('PreviousNode').first().json.value }) }}"
+  }
+}
+```
+
+**問題点**:
+- `specifyBody: "string"` は `body` パラメータ内の `={{ }}` 式を**評価しない**
+- 式がリテラル文字列として送信される
+- 結果: API側でJSON parse errorまたはvalidation errorが発生
+
+**✅ 正しい設定** (式が評価される):
+```json
+{
+  "parameters": {
+    "method": "POST",
+    "url": "https://api.example.com/endpoint",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ { key: $('PreviousNode').first().json.value } }}"
+  }
+}
+```
+
+**正しい動作**:
+- `specifyBody: "json"` + `jsonBody` パラメータで式を評価
+- `={{ }}` 内のJavaScript式が実行される
+- 結果: 正しいJSON objectがAPIに送信される
+
+#### ルール2: データ型別の正しい式構文
+
+| データ型 | 正しい構文 | 誤った構文 | 理由 |
+|---------|-----------|-----------|------|
+| **String** | `" + $json.stringField + "` | `" + JSON.stringify($json.stringField) + "` | JSON.stringify()は二重引用符をエスケープ |
+| **Number** | `" + $json.numberField + "` | `"\"field\": \" + $json.numberField + \"\""` | JSONで数値に引用符は不要 |
+| **Boolean** | `" + $json.boolField + "` | `" + $json.boolField.toString() + "` | 自動的に文字列変換される |
+| **Array/Object** | `" + JSON.stringify($json.arrayField) + "` | `" + $json.arrayField + "` | 配列/オブジェクトはJSON.stringify必須 |
+| **ISO Date** | `" + JSON.stringify(new Date().toISOString()) + "` | `" + new Date().toISOString() + "` | 文字列として扱う場合は引用符が必要 |
+| **null** | `null` | `"null"` | nullは文字列ではなくnull値として送信 |
+
+#### 実際のエラー事例（WF6 Node 8）
+
+**Execution 816 失敗ログ**:
+```json
+// 送信されたリクエストボディ（誤り）
+{
+  "{\"parent\":{\"database_id\":\"29968d5c298681ad90d0c24ed710503e\"},\"properties\":{...}}": ""
+}
+
+// Notion APIエラー
+{
+  "object": "error",
+  "status": 400,
+  "code": "validation_error",
+  "message": "body.{...} should be not present, instead was `\"\"`."
+}
+```
+
+**修正後（Execution 823成功）**:
+```json
+// 正しく送信されたリクエストボディ
+{
+  "parent": {
+    "database_id": "29968d5c298681ad90d0c24ed710503e"
+  },
+  "properties": {
+    "Title": {
+      "title": [{"text": {"content": "安全で子どもが喜ぶ！渋谷のカフェ＆レストラン完全ガイド"}}]
+    }
+  }
+}
+```
+
+### 教訓とベストプラクティス
+
+1. **必須パラメータチェック**: ワークフロー構築時に `specifyBody` パラメータが正しく設定されているか確認
+2. **式構文の検証**: `={{ }}` を使う場合は必ず `specifyBody: "json"` + `jsonBody` の組み合わせ
+3. **データフローシミュレーション**: テスト前に各ノードのパラメータを目視確認
+4. **段階的テスト**: 新しいHTTP Requestノードは単体で先にテスト実行
+
+---
+
+## 2. n8n式構文のベストプラクティス
+
+### 基本構文ルール
+
+#### 式の基本形式
+
+```javascript
+// ✅ 正しい: Expression内でのJavaScript実行
+={{ $('NodeName').first().json.propertyName }}
+
+// ✅ 正しい: 複雑な変換処理
+={{ $('NodeName').first().json.items.map(item => item.name).join(', ') }}
+
+// ✅ 正しい: 条件分岐
+={{ $('NodeName').first().json.status === 'active' ? 'はい' : 'いいえ' }}
+
+// ❌ 間違い: 式の外側で引用符を使用
+"={{ $('NodeName').first().json.propertyName }}"  // これはリテラル文字列として扱われる
+```
+
+### JSONボディ構築の正しい方法
+
+#### パターン1: シンプルなオブジェクト
+
+```javascript
+// ✅ 正しい: jsonBodyでオブジェクト構築
+jsonBody: "={{ {
+  title: $('Prepare Data').first().json.title,
+  body: $('Prepare Data').first().json.body,
+  status: 'draft'
+} }}"
+```
+
+#### パターン2: ネストされた構造
+
+```javascript
+// ✅ 正しい: ネストされたオブジェクト
+jsonBody: "={{ {
+  parent: {
+    database_id: '29968d5c298681ad90d0c24ed710503e'
+  },
+  properties: {
+    Title: {
+      title: [{
+        text: {
+          content: $('Prepare Data').first().json.title
+        }
+      }]
+    }
+  }
+} }}"
+```
+
+#### パターン3: 配列マッピング
+
+```javascript
+// ✅ 正しい: 配列を別の形式にマッピング
+jsonBody: "={{ {
+  categories: $('Prepare Data').first().json.categories.map(c => ({ name: c }))
+} }}"
+
+// ✅ 正しい: 配列のフィルタリングとマッピング
+jsonBody: "={{ {
+  activeItems: $('Source').first().json.items
+    .filter(item => item.status === 'active')
+    .map(item => ({
+      id: item.id,
+      name: item.name
+    }))
+} }}"
+```
+
+### 文字列連結の罠を避ける
+
+#### ❌ 避けるべきパターン
+
+```javascript
+// ❌ 間違い: JSON.stringify()でstring値をエスケープ
+"content": " + JSON.stringify($json.topic) + "
+// 結果: "content": "\"子供向けカフェガイド\""  ← 不要なエスケープ
+
+// ❌ 間違い: 手動で引用符を追加
+"content": "\"" + $json.topic + "\""
+// 結果: JSON構文エラーの可能性
+```
+
+#### ✅ 正しいパターン
+
+```javascript
+// ✅ 正しい: string値は直接使用
+"content": " + $json.topic + "
+// 結果: "content": "子供向けカフェガイド"
+
+// ✅ 正しい: オブジェクト全体をJSON.stringify
+" + JSON.stringify({ content: $json.topic }) + "
+// 結果: {"content": "子供向けカフェガイド"}
+```
+
+---
+
+## 3. ノード参照とデータアクセス
+
+### ノード名の正確な参照
+
+#### 🚨 Critical: ノード名は完全一致必須
+
+**❌ 間違った参照** (Execution 817エラー):
+```javascript
+// ノード名: "Select Topic"
+// 参照: $('Get Random Topics')  ← 存在しないノード名
+{
+  "error": "Referenced node doesn't exist: \"Get Random Topics\""
+}
+```
+
+**✅ 正しい参照**:
+```javascript
+// ノード名: "Select Topic"
+// 参照: $('Select Topic')  ← 正確なノード名
+$('Select Topic').first().json.topicName
+```
+
+### プロパティアクセスの検証
+
+#### ベストプラクティス: データ構造の事前確認
+
+1. **前のノードの出力を確認**:
+```javascript
+// ノードの実行結果を確認
+{
+  "json": {
+    "topicId": "xxx",
+    "topicName": "英語学童選びのポイント",  // ← 正しいプロパティ名
+    "score": 85
+  }
+}
+```
+
+2. **正しいプロパティ名を使用**:
+```javascript
+// ✅ 正しい
+$('Select Topic').first().json.topicName
+
+// ❌ 間違い
+$('Select Topic').first().json.topic  // プロパティ名が違う
+```
+
+### データアクセスパターン
+
+#### パターン1: 単一アイテムへのアクセス
+
+```javascript
+// ✅ 推奨: .first() を使用
+$('NodeName').first().json.propertyName
+
+// ⚠️ 注意: [0] も動作するが .first() が推奨
+$('NodeName').item[0].json.propertyName
+```
+
+#### パターン2: 全アイテムのループ処理
+
+```javascript
+// ✅ 正しい: 全アイテムをマッピング
+$('NodeName').all().map(item => item.json.propertyName)
+
+// ✅ 正しい: フィルタリングとマッピング
+$('NodeName').all()
+  .filter(item => item.json.status === 'active')
+  .map(item => item.json.name)
+```
+
+#### パターン3: ネストされたプロパティ
+
+```javascript
+// ✅ 正しい: ネストされたプロパティへのアクセス
+$('Notion Query').first().json.results[0].properties.Title.title[0].plain_text
+
+// ✅ 正しい: Optional chaining（存在チェック）
+$('Notion Query').first().json.results?.[0]?.properties?.Title?.title?.[0]?.plain_text || 'デフォルト値'
+```
+
+---
+
+## 4. ワークフロー更新戦略
+
+### 部分更新 vs 完全更新
+
+#### 🚨 Critical: 部分更新のリスク（Execution 822エラー）
+
+**❌ 危険な部分更新** (必須パラメータが欠落):
+```javascript
+// 操作: Node 9の jsonBody のみ更新
+n8n_update_partial_workflow({
+  operations: [{
+    type: "updateNode",
+    nodeId: "...",
+    updates: {
+      parameters: {
+        jsonBody: "={{ {...} }}"  // ← これだけ更新
+      }
+    }
+  }]
+})
+
+// 結果: method, url, sendHeaders等の必須パラメータが消失
+// エラー: "The workflow has issues and cannot be executed"
+```
+
+**✅ 安全な完全更新**:
+```javascript
+n8n_update_partial_workflow({
+  operations: [{
+    type: "updateNode",
+    nodeId: "...",
+    updates: {
+      parameters: {
+        method: "POST",  // ← 全パラメータを含める
+        url: "https://...",
+        sendHeaders: true,
+        headerParameters: {...},
+        sendBody: true,
+        contentType: "json",
+        specifyBody: "json",
+        jsonBody: "={{ {...} }}"
+      }
+    }
+  }]
+})
+```
+
+### 更新戦略の選択ガイド
+
+| 状況 | 推奨戦略 | 理由 |
+|------|---------|------|
+| **新規ノード追加** | 完全パラメータ指定 | 必須パラメータの欠落を防ぐ |
+| **単純な値変更** (URL、API Key等) | 部分更新OK | 他のパラメータに影響なし |
+| **複雑な式変更** (jsonBody等) | 完全更新推奨 | 依存関係を明示的に管理 |
+| **ノード移動・接続変更** | 完全ワークフロー更新 | 接続関係の整合性を保証 |
+| **テスト後の修正** | 完全更新 | 予期しない副作用を防ぐ |
+
+### ベストプラクティス
+
+1. **更新前のバックアップ**:
+```javascript
+// 現在のワークフローを取得して保存
+const currentWorkflow = await n8n_get_workflow({ id: workflowId });
+// 更新実行
+// エラー時はcurrentWorkflowから復元可能
+```
+
+2. **段階的更新**:
+```javascript
+// Step 1: 1つのノードを更新
+// Step 2: テスト実行
+// Step 3: 成功したら次のノードを更新
+// Step 4: 繰り返し
+```
+
+3. **バージョン管理**:
+```javascript
+// 各更新後にバージョンIDを記録
+// docs/setup/WF6-SETUP.md の変更履歴に記載
+```
+
+### ワークフローアクティブ化の制限
+
+#### 🚨 Critical: MCPではワークフローをアクティブ化できない
+
+**問題**: n8n MCPの`n8n_update_partial_workflow`で`active: true`を設定しても反映されない
+
+**❌ 動作しない方法**:
+```javascript
+// MCPでactiveを更新しようとする
+n8n_update_partial_workflow({
+  id: "workflowId",
+  operations: [{
+    type: "updateSettings",
+    settings: { active: true }
+  }]
+})
+// 結果: ワークフローは更新されるが active: false のまま
+```
+
+**✅ 正しい方法**: n8n UIで手動アクティブ化
+
+```
+1. n8n管理画面でワークフローを開く
+2. 右上のトグルスイッチを OFF → ON に切り替える
+3. ワークフローが Active 状態になったことを確認
+```
+
+**理由**:
+- n8n APIまたはMCPの制限により、プログラム経由でのアクティブ化ができない
+- ワークフローのアクティブ化にはn8n内部での追加のバリデーションや初期化処理が必要
+- 手動アクティブ化により、トリガーノード（Webhook等）が正しく登録される
+
+**ベストプラクティス**:
+1. MCPでワークフロー構築・更新を完了
+2. n8n UIで手動アクティブ化
+3. アクティブ化後にテスト実行
+
+**適用例**: WF7 Phase1, Phase2で確認済み
+
+---
+
+## 5. テストとデバッグアプローチ
+
+### テスト駆動開発（TDD）アプローチ
+
+#### WF6で学んだ教訓: テスト優先、ドキュメント後回し
+
+**❌ 非効率なアプローチ**:
+```
+修正 → ドキュメント更新 → テスト → エラー発見 → 修正 → ドキュメント更新...
+```
+- 問題: ドキュメント更新に時間がかかり、テストイテレーションが遅い
+
+**✅ 効率的なアプローチ**:
+```
+修正 → テスト → エラー分析 → 修正 → テスト → 成功確認 → ドキュメント一括更新
+```
+- 利点: 高速なテスト-修正サイクル、成功後に包括的なドキュメント作成
+
+### 段階的テスト戦略
+
+#### Phase 1: データフローシミュレーション（テスト前）
+
+```javascript
+// 各ノードのパラメータを目視確認
+// - 必須パラメータの存在確認
+// - 式構文の妥当性チェック
+// - ノード参照の正確性確認
+// - データ型の一致確認
+```
+
+**チェックリスト**:
+- [ ] HTTP Request Node: `specifyBody` パラメータ設定済み
+- [ ] HTTP Request Node: `={{ }}` 式使用時は `specifyBody: "json"`
+- [ ] Function Node: `return [{ json: {...} }]` 形式の戻り値
+- [ ] ノード参照: 正確なノード名を使用
+- [ ] プロパティアクセス: 前ノードの出力構造と一致
+
+#### Phase 2: 単体テスト（n8n UI）
+
+```javascript
+// 各ノードを個別に "Execute Node" で実行
+// 1. Schedule Trigger → 手動トリガーに切り替え
+// 2. Notion Topics → 結果が10件取得されるか確認
+// 3. Select Topic → topicName, score等が正しいか確認
+// 4. GPT-4 Title → 3タイプのタイトルが生成されるか確認
+// ... 以下同様
+```
+
+#### Phase 3: 統合テスト
+
+```javascript
+// 全ノードを一度に実行
+// - n8n UI → "Execute Workflow" をクリック
+// - 各ノードの入出力を確認
+// - エラー発生時は該当ノードから調査
+```
+
+### デバッグ手法
+
+#### 手法1: 実行ログの詳細分析
+
+```javascript
+// n8n MCP経由で実行詳細を取得
+n8n_get_execution({
+  id: "816",  // 失敗したExecution ID
+  mode: "filtered",
+  nodeNames: ["Notion: Register Article"]  // 失敗したノード
+})
+
+// 確認項目:
+// - error.message: エラーメッセージ
+// - error.httpCode: HTTPステータスコード
+// - requestBody: 実際に送信されたリクエスト
+// - responseBody: APIからのレスポンス
+```
+
+#### 手法2: Notion/Slack通知での確認
+
+```javascript
+// Slack通知ノードを追加してデバッグ情報を送信
+{
+  "jsonBody": "={{
+    {
+      text: 'Debug Info',
+      blocks: [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: '*Title:* ' + $('Prepare Data').first().json.title + '\n' +
+                '*Body Length:* ' + $('Prepare Data').first().json.bodyLength + '\n' +
+                '*Categories:* ' + $('Prepare Data').first().json.categories.join(', ')
+        }
+      }]
+    }
+  }}"
+}
+```
+
+#### 手法3: Function Nodeでのログ出力
+
+```javascript
+// Function Nodeでconsole.logを使用
+const data = $('Previous Node').first().json;
+console.log('Debug - topicName:', data.topicName);
+console.log('Debug - score:', data.score);
+return [{ json: data }];
+
+// n8n実行ログのconsoleタブで確認可能
+```
+
+### エラーパターンと対処法
+
+| エラータイプ | 症状 | 対処法 |
+|------------|------|--------|
+| **式評価エラー** | `specifyBody: "string"` + `={{ }}` | `specifyBody: "json"` + `jsonBody` に変更 |
+| **ノード参照エラー** | "Referenced node doesn't exist" | ノード名を正確に確認、typoチェック |
+| **プロパティアクセスエラー** | `undefined` または `null` | 前ノードの出力構造を確認、プロパティ名修正 |
+| **設定エラー** | "The workflow has issues" | 必須パラメータ欠落、完全パラメータセット適用 |
+| **API認証エラー** | 401 Unauthorized | API Key確認、Headerパラメータ確認 |
+| **APIバリデーションエラー** | 400 Bad Request | リクエストボディの構造確認、API仕様書と照合 |
+
+---
+
+## 6. Notion API統合
+
+### Notion APIの特性
+
+#### 制限事項
+
+1. **rich_text プロパティ**: 最大2000文字
+```javascript
+// ✅ 長い本文を扱う場合の対処法
+{
+  "Description": {
+    "rich_text": [{
+      "text": {
+        "content": $('Prepare Data').first().json.body.substring(0, 2000)
+      }
+    }]
+  }
+}
+```
+
+2. **API Version**: 必須ヘッダー
+```javascript
+{
+  "headerParameters": {
+    "parameters": [
+      { "name": "Notion-Version", "value": "2022-06-28" }
+    ]
+  }
+}
+```
+
+### Notionページ作成の正しいリクエスト構造
+
+```javascript
+{
+  "method": "POST",
+  "url": "https://api.notion.com/v1/pages",
+  "sendHeaders": true,
+  "headerParameters": {
+    "parameters": [
+      { "name": "Authorization", "value": "Bearer ntn_..." },
+      { "name": "Notion-Version", "value": "2022-06-28" },
+      { "name": "Content-Type", "value": "application/json" }
+    ]
+  },
+  "sendBody": true,
+  "contentType": "json",
+  "specifyBody": "json",
+  "jsonBody": "={{ {
+    parent: {
+      database_id: '29968d5c298681ad90d0c24ed710503e'
+    },
+    properties: {
+      Title: {
+        title: [{
+          text: {
+            content: $('Prepare Data').first().json.title
+          }
+        }]
+      },
+      Description: {
+        rich_text: [{
+          text: {
+            content: $('Prepare Data').first().json.body.substring(0, 2000)
+          }
+        }]
+      },
+      Status: {
+        select: {
+          name: '検知済み'
+        }
+      },
+      Category: {
+        multi_select: $('Prepare Data').first().json.categories.map(c => ({ name: c }))
+      }
+    }
+  } }}"
+}
+```
+
+### Notionプロパティタイプ別の構文
+
+| プロパティタイプ | 構文例 |
+|----------------|--------|
+| **title** | `{ title: [{ text: { content: "タイトル" } }] }` |
+| **rich_text** | `{ rich_text: [{ text: { content: "本文" } }] }` |
+| **number** | `{ number: 42 }` |
+| **select** | `{ select: { name: "選択肢名" } }` |
+| **multi_select** | `{ multi_select: [{ name: "タグ1" }, { name: "タグ2" }] }` |
+| **date** | `{ date: { start: "2025-10-29" } }` |
+| **checkbox** | `{ checkbox: true }` |
+| **url** | `{ url: "https://example.com" }` |
+| **email** | `{ email: "user@example.com" }` |
+| **phone_number** | `{ phone_number: "090-1234-5678" }` |
+| **relation** | `{ relation: [{ id: "page-id-1" }, { id: "page-id-2" }] }` |
+
+---
+
+## 7. Webhook設計パターンとRailway制限
+
+### 🚨 Critical: Railway環境でのWebhook永続化制限
+
+#### ルール1: パスパラメータは使用不可
+
+**Railway環境の特性**:
+- Webhook URLはコンテナ再起動後も永続化される
+- しかし、パスパラメータ形式のルーティングは**サポートされていない**
+
+**❌ 動作しないパターン** (Railway環境):
+```json
+{
+  "parameters": {
+    "path": "wf7-files/script/:articleId",
+    "responseMode": "onReceived"
+  }
+}
+```
+
+**問題点**:
+- `:articleId` のようなパスパラメータはRailwayルーティングテーブルに登録できない
+- 結果: 404 Not Found エラー
+- n8n UI上では正常に見えるが、実際にはルーティングが機能しない
+
+**✅ 正しいパターン** (Railway対応):
+```json
+{
+  "parameters": {
+    "httpMethod": "GET",
+    "path": "wf7-files-script",
+    "responseMode": "onReceived"
+  }
+}
+```
+
+**修正内容**:
+1. パスパラメータ削除: `/script/:articleId` → `/script`
+2. クエリパラメータで代替: `?articleId=xxx` をURLに含める
+3. httpMethod明示: `"httpMethod": "GET"` 必須
+
+#### ルール2: パラメータアクセス方法の違い
+
+| 方式 | URL例 | n8n式構文 | Railway対応 |
+|------|-------|----------|-----------|
+| **パスパラメータ** | `/files/:id` | `$json.params.id` | ❌ 非対応 |
+| **クエリパラメータ** | `/files?id=xxx` | `$json.query.id` | ✅ 対応 |
+| **固定パス** | `/test-webhook` | N/A | ✅ 対応 |
+
+**データ解析ノード修正例**:
+
+```javascript
+// ❌ パスパラメータアクセス (Railway非対応)
+const articleId = $json.params.articleId;
+
+// ✅ クエリパラメータアクセス (Railway対応)
+const articleId = $json.query.articleId;
+```
+
+#### ルール3: httpMethodパラメータは必須
+
+**問題**: httpMethodパラメータが未設定の場合、Webhook登録がスキップされる可能性
+
+```json
+// ❌ httpMethod未設定
+{
+  "parameters": {
+    "path": "wf7-files-script"
+  }
+}
+
+// ✅ httpMethod明示
+{
+  "parameters": {
+    "httpMethod": "GET",
+    "path": "wf7-files-script",
+    "responseMode": "onReceived"
+  }
+}
+```
+
+### Webhook設計パターン
+
+#### パターン1: File Server (ファイル配信Webhook)
+
+**ユースケース**:
+- 動画、音声、字幕、アセットなどの大容量ファイル配信
+- articleId紐付けでファイル取得
+
+**推奨設計**:
+```json
+{
+  "name": "Webhook",
+  "type": "n8n-nodes-base.webhook",
+  "parameters": {
+    "httpMethod": "GET",
+    "path": "wf7-files-script",
+    "responseMode": "onReceived"
+  }
+}
+```
+
+**URL生成パターン**:
+```javascript
+// Phase3やPhase4でFile Server URLを生成
+const baseUrl = "https://n8n-python-production-344b.up.railway.app";
+const scriptUrl = `${baseUrl}/webhook/wf7-files-script?articleId=${articleId}`;
+const assetsUrl = `${baseUrl}/webhook/wf7-files-assets?articleId=${articleId}`;
+```
+
+**データ解析ノード**:
+```javascript
+const input = $input.first().json;
+const articleId = input.query.articleId;  // ← クエリパラメータから取得
+
+if (!articleId) {
+  throw new Error('articleId is required as query parameter');
+}
+
+return [{
+  json: {
+    articleId,
+    timestamp: new Date().toISOString()
+  }
+}];
+```
+
+#### パターン2: Phase Webhook (処理トリガー)
+
+**ユースケース**:
+- Phase1-5の各フェーズ起動
+- 複雑な入力データを受け取る
+
+**推奨設計**:
+```json
+{
+  "name": "Webhook",
+  "type": "n8n-nodes-base.webhook",
+  "parameters": {
+    "httpMethod": "POST",
+    "path": "wf7-phase4-render",
+    "responseMode": "onReceived"
+  }
+}
+```
+
+**入力データ解析**:
+```javascript
+const input = $input.first().json;
+const body = input.body?.body || input.body || input;
+
+const articleId = body.articleId;
+const notionPageId = body.notionPageId;
+const scriptUrl = body.scriptUrl;    // File Server URLを受け取る
+const assetsUrl = body.assetsUrl;
+
+if (!articleId || !notionPageId || !scriptUrl || !assetsUrl) {
+  throw new Error('articleId, notionPageId, scriptUrl, assetsUrl are required');
+}
+
+return [{
+  json: {
+    articleId,
+    notionPageId,
+    scriptUrl,
+    assetsUrl
+  }
+}];
+```
+
+### Railway環境でのWebhook運用ベストプラクティス
+
+#### 1. URL設計の統一ルール
+
+```
+✅ 推奨: ケバブケース + クエリパラメータ
+/webhook/wf7-files-script?articleId=xxx
+/webhook/wf7-files-assets?articleId=xxx
+/webhook/wf7-phase4-render (POST body)
+
+❌ 非推奨: パスパラメータ
+/webhook/wf7-files/script/:articleId
+/webhook/wf7-files/assets/:articleId
+```
+
+#### 2. Webhook登録確認方法
+
+**n8n UI保存後の確認手順**:
+```bash
+# 1. Webhookエンドポイントに直接アクセス
+curl https://your-app.up.railway.app/webhook/wf7-files-script?articleId=test
+
+# 2. 200 OKまたは正常なエラーメッセージが返れば登録成功
+# 3. 404エラーならWebhook未登録またはパスパラメータ問題
+```
+
+#### 3. File Server URL生成の共通関数
+
+```javascript
+// Phase3, Phase4など複数フェーズで使用
+function generateFileServerUrls(baseUrl, articleId) {
+  return {
+    scriptUrl: `${baseUrl}/webhook/wf7-files-script?articleId=${articleId}`,
+    assetsUrl: `${baseUrl}/webhook/wf7-files-assets?articleId=${articleId}`,
+    voiceFileUrl: `${baseUrl}/webhook/wf7-files-audio?articleId=${articleId}`,
+    subtitleFileUrl: `${baseUrl}/webhook/wf7-files-subtitle?articleId=${articleId}`,
+    videoUrl: `${baseUrl}/webhook/wf7-files-video?articleId=${articleId}`,
+    thumbUrl: `${baseUrl}/webhook/wf7-files-thumbnail?articleId=${articleId}`
+  };
+}
+
+// 使用例
+const baseUrl = "https://n8n-python-production-344b.up.railway.app";
+const articleId = $('入力データ解析').first().json.articleId;
+const urls = generateFileServerUrls(baseUrl, articleId);
+```
+
+### 実際のエラー事例と修正
+
+#### 事例1: File Server 404エラー (WF7)
+
+**症状**:
+- File Server Webhook (6個) 全て404エラー
+- WF7 Phase1-5 Webhookは正常動作
+
+**原因**:
+- File Server WebhookがパスパラメータURL形式: `/wf7-files/script/:articleId`
+- Railwayがパスパラメータをサポートしていないためルーティング未登録
+
+**修正内容**:
+1. **Webhookノード**: パス変更 + httpMethod追加
+   - 旧: `wf7-files/script/:articleId`
+   - 新: `wf7-files-script` + `httpMethod: "GET"`
+
+2. **データ解析ノード**: パラメータアクセス変更
+   - 旧: `$json.params.articleId`
+   - 新: `$json.query.articleId`
+
+3. **Phase3/Phase4**: URL生成ロジック変更
+   - 旧: `${baseUrl}/webhook/wf7-files/audio/${articleId}`
+   - 新: `${baseUrl}/webhook/wf7-files-audio?articleId=${articleId}`
+
+4. **Phase4**: ダウンロードノードURL参照修正
+   - 旧: `$json.scriptUrl` (直接アクセス失敗)
+   - 新: `$('レンダリングリクエスト構築').first().json.renderRequest.scriptUrl`
+
+**結果**: ✅ 全File Server Webhook正常動作確認 (2025-11-01)
+
+### 教訓とベストプラクティス
+
+1. **Railway環境では常にクエリパラメータを使用**: パスパラメータは避ける
+2. **httpMethodパラメータは必須**: Webhook登録の確実性を担保
+3. **UI保存後に動作確認**: curlでWebhookエンドポイントをテスト
+4. **URL生成ロジックを一元化**: 共通関数で一貫性を保つ
+5. **ドキュメント化**: 各File ServerのURL形式を明記
+6. **E2Eテスト**: Phase→File Server→Phaseの連携を検証
+
+---
+
+## 8. Execute Command ノードのベストプラクティス
+
+### 🚨 Critical: 複数行コマンドパラメータの落とし穴
+
+#### ルール1: commandパラメータは必ず単一行形式で記述
+
+**n8n UIの危険な挙動**:
+- n8n UIでExecute Commandノードの長いコマンドを編集すると、自動的に改行が挿入される
+- 保存時には正常に見えるが、実行時にbash/shellがコマンドを正しく解釈できない
+- 結果: ノード実行がスキップされ、ワークフロー全体が停止または非常に長い時間実行される
+
+**❌ 動作しないパターン** (n8n UIが自動挿入した改行):
+```javascript
+{
+  "parameters": {
+    "command": "=python -c \"from PIL import Image; [Image.new('RGB', (1080, 1920), \n  color=['blue','green','red','yellow'][i%4]).save(f'/tmp/integration_asset_{i}.jpg') \n  for i in range(10)]\" && echo '{{ $json.scriptJson }}' > {{ $json.scriptPath }} &&\n  echo '{{ $json.assetsJson }}' > {{ $json.assetsPath }} && python\n  /app/render_video_ffmpeg.py --script {{ $json.scriptPath }} --assets {{\n  $json.assetsPath }} --out {{ $json.outputPath }}"
+  }
+}
+```
+
+**問題点**:
+- コマンド文字列内に `\n` (改行文字) が含まれる
+- bash/shellは改行を含むコマンドを正しく解釈できない
+- Execute Commandノードが実行されず、後続のノードも実行されない
+- ワークフロー全体が「canceled」ステータスで異常終了
+- 実行時間が極端に長くなる（例: 7時間51分）
+
+**✅ 正しいパターン** (単一行形式):
+```javascript
+{
+  "parameters": {
+    "command": "=python -c \"from PIL import Image; [Image.new('RGB', (1080, 1920), color=['blue','green','red','yellow'][i%4]).save(f'/tmp/integration_asset_{i}.jpg') for i in range(10)]\" && echo '{{ $json.scriptJson }}' > {{ $json.scriptPath }} && echo '{{ $json.assetsJson }}' > {{ $json.assetsPath }} && python /app/render_video_ffmpeg.py --script {{ $json.scriptPath }} --assets {{ $json.assetsPath }} --out {{ $json.outputPath }}"
+  }
+}
+```
+
+**正しい動作**:
+- 改行なし、すべて1行で記述
+- bashが正しくコマンドを解釈
+- Execute Commandノードが正常に実行される
+- 実行時間が正常範囲に収まる（例: 19秒）
+
+#### ルール2: n8n UI保存後の検証手順
+
+**必須検証ステップ**:
+```
+1. n8n UIでワークフローを保存
+2. n8n_get_workflowでワークフロー定義をJSON取得
+3. Execute CommandノードのcommandパラメータをJSONで確認
+4. "\n" 文字が含まれていないか目視確認
+5. 含まれていた場合、n8n_update_full_workflowで単一行形式に修正
+```
+
+**検証コマンド例**:
+```javascript
+// ワークフロー取得
+const workflow = await n8n_get_workflow({ id: "workflowId" });
+
+// Execute Commandノードを検索
+const executeNodes = workflow.nodes.filter(n => n.type === "n8n-nodes-base.executeCommand");
+
+// commandパラメータの改行チェック
+executeNodes.forEach(node => {
+  const command = node.parameters.command;
+  if (command.includes("\n")) {
+    console.warn(`⚠️ Node "${node.name}" contains newlines in command parameter`);
+  }
+});
+```
+
+#### 実際のエラー事例（WF7 Phase4 Execution 101）
+
+**症状**:
+- Execution ID: 101
+- Status: canceled
+- Duration: 28,239,429ms (7時間51分39秒)
+- 実行されたノード: 6 / 13
+- 停止位置: "レンダリングリクエスト構築"
+- 未実行: "動画レンダリング実行", "動画メタデータ抽出", "Notionペイロード作成", "Notionページ更新", "Respond to Webhook"
+
+**原因分析**:
+```javascript
+// Execution 101のワークフロー定義（2025-11-03T16:06:04に更新）
+{
+  "parameters": {
+    "command": "=python -c \"from PIL import Image; [Image.new('RGB', (1080, 1920), \n  color=['blue','green','red','yellow'][i%4]).save(f'/tmp/integration_asset_{i}.jpg') \n  for i in range(10)]\" && ..."
+  }
+}
+// ← commandパラメータに複数の"\n"が含まれている
+```
+
+**修正内容**:
+```javascript
+// 2025-11-04T01:12:15.357Zにn8n_update_full_workflowで修正
+{
+  "parameters": {
+    "command": "=python -c \"from PIL import Image; [Image.new('RGB', (1080, 1920), color=['blue','green','red','yellow'][i%4]).save(f'/tmp/integration_asset_{i}.jpg') for i in range(10)]\" && echo '{{ $json.scriptJson }}' > {{ $json.scriptPath }} && echo '{{ $json.assetsJson }}' > {{ $json.assetsPath }} && python /app/render_video_ffmpeg.py --script {{ $json.scriptPath }} --assets {{ $json.assetsPath }} --out {{ $json.outputPath }}"
+  }
+}
+// ← 改行をすべて削除し、単一行形式に統一
+```
+
+**修正結果（Execution 146）**:
+- Status: success
+- Duration: 19,056ms (19秒)
+- 実行されたノード: 11 / 11 ✅
+- すべてのノードが正常実行
+- **パフォーマンス改善: 99.9%** (7h51m → 19s)
+
+#### デバッグ手法: Execution Historyの分析
+
+**Step 1: 失敗したExecutionを特定**
+```javascript
+// 実行履歴を取得
+n8n_list_executions({
+  workflowId: "workflowId",
+  limit: 20
+})
+
+// Status: "canceled" または Duration異常に長い実行を探す
+```
+
+**Step 2: Execution詳細を分析**
+```javascript
+n8n_get_execution({
+  id: "executionId",
+  mode: "summary"
+})
+
+// 確認項目:
+// - どのノードまで実行されたか（stoppedAt）
+// - 未実行のノードは何か
+// - エラーメッセージの有無
+// - 実行時間の異常
+```
+
+**Step 3: ワークフロー定義を確認**
+```javascript
+n8n_get_workflow({
+  id: "workflowId"
+})
+
+// Execute Commandノードのcommandパラメータを重点的にチェック
+// "\n" 文字の有無を確認
+```
+
+**Step 4: タイムライン分析**
+```javascript
+// 複数のExecutionを時系列で比較
+// - いつから問題が発生したか
+// - どのワークフロー更新が原因か
+// - 成功していたExecutionと失敗したExecutionの差分
+
+// 例: Execution 101の前後
+// - Execution 100 (2025-11-03 15:00) ← 成功
+// - ワークフロー更新 (2025-11-03 16:06:04) ← この時点で改行が混入
+// - Execution 101 (2025-11-03 16:10) ← 失敗開始
+```
+
+### ベストプラクティス
+
+#### 1. Execute Command ノード作成時
+- [ ] commandパラメータは必ず単一行で記述
+- [ ] 長いコマンドでも改行を使わず、`&&` で連結
+- [ ] n8n式構文 `={{ }}` を使う場合も単一行を維持
+
+#### 2. ワークフロー保存後
+- [ ] n8n_get_workflowでJSON定義を取得
+- [ ] Execute Commandノードのcommandパラメータを確認
+- [ ] "\n" が含まれていないか検証
+- [ ] 含まれていた場合は即座に単一行形式に修正
+
+#### 3. テスト実行前
+- [ ] Execute Commandノードを含むワークフローは必ず検証
+- [ ] 単体テスト（Execute Node）で動作確認
+- [ ] 実行時間が正常範囲内か確認
+
+#### 4. デバッグ時
+- [ ] Execution Historyで実行パターンを分析
+- [ ] 成功/失敗の境界となったワークフロー更新を特定
+- [ ] Execute Commandノードのcommandパラメータを重点調査
+- [ ] タイムアウトや長時間実行は改行混入の可能性を疑う
+
+#### 5. ドキュメンテーション
+- [ ] Execute Commandノードの修正履歴を記録
+- [ ] 改行問題の発生と修正をナレッジベースに記載
+- [ ] 次回の同様問題を防ぐための教訓を明記
+
+### 教訓
+
+1. **n8n UIは信頼しない**: UI上で正常に見えても、JSON定義を必ず確認する
+2. **単一行の徹底**: Execute Commandノードのcommandパラメータは例外なく単一行形式
+3. **保存後検証**: n8n UIで保存した直後に、MCPまたはAPIで実際のJSON定義を確認
+4. **高速検証サイクル**: ドキュメント更新より先にテスト実行で問題を発見
+5. **Execution History活用**: 実行履歴の時系列分析で問題原因を特定
+
+### 適用例
+
+- **WF7 Phase4**: Execution 101 (7h51m失敗) → Execution 146 (19s成功) - 2025-11-04
+- **影響範囲**: Execute Commandノードを使う全ワークフロー
+- **再発防止**: 本ナレッジセクションの作成と共有
+
+---
+
+## 9. チェックリスト
+
+### ワークフロー構築時チェックリスト
+
+#### 設計フェーズ
+
+- [ ] ワークフローの目的と期待する結果を明確化
+- [ ] 各ノードの役割と責任を定義
+- [ ] データフローを図示（入力→処理→出力）
+- [ ] 外部API/サービスの仕様書を確認
+- [ ] エラーハンドリング戦略を計画
+
+#### 実装フェーズ
+
+- [ ] **HTTP Request Node v4**:
+  - [ ] `specifyBody` パラメータを明示的に設定
+  - [ ] `={{ }}` 式を使う場合は `specifyBody: "json"` + `jsonBody`
+  - [ ] 必須パラメータ（method, url, sendHeaders等）をすべて含める
+- [ ] **Webhook Node**:
+  - [ ] `httpMethod` パラメータを明示的に設定（GET/POST/PUT/DELETE）
+  - [ ] Railway環境ではパスパラメータ(`:id`)を使用しない
+  - [ ] クエリパラメータ(`?id=xxx`)形式でデータを渡す
+  - [ ] データ解析ノードで `$json.query.paramName` でアクセス
+  - [ ] UI保存後にcurlで動作確認（404エラーチェック）
+- [ ] **Function Node**:
+  - [ ] 戻り値が `return [{ json: {...} }]` 形式
+  - [ ] エラーハンドリングを実装（try-catch）
+- [ ] **ノード参照**:
+  - [ ] ノード名が正確（typoなし）
+  - [ ] プロパティ名が前ノードの出力と一致
+  - [ ] `.first()` または `.all()` を適切に使用
+- [ ] **Notion API**:
+  - [ ] `Notion-Version` ヘッダーを含める
+  - [ ] rich_textフィールドは2000文字以内
+  - [ ] プロパティタイプが正しい構文
+
+#### テストフェーズ
+
+- [ ] データフローシミュレーション（目視確認）
+- [ ] 各ノードの単体テスト（Execute Node）
+- [ ] 統合テスト（Execute Workflow）
+- [ ] エラーケースのテスト
+- [ ] 実行ログの詳細確認
+- [ ] 外部システム（Notion, Slack等）での結果確認
+
+#### デバッグフェーズ
+
+- [ ] エラーメッセージの完全な読解
+- [ ] 実行ログから実際のリクエスト/レスポンスを取得
+- [ ] ノード間のデータ構造を確認
+- [ ] API仕様書とリクエスト構造を照合
+- [ ] 段階的なテストで問題箇所を特定
+
+#### ドキュメンテーションフェーズ
+
+- [ ] ワークフローの概要説明
+- [ ] 各ノードの設定詳細
+- [ ] テスト結果の記録
+- [ ] エラーと修正内容の記録
+- [ ] バージョンIDと変更履歴の記録
+- [ ] 次のステップと改善点の記載
+
+### ワークフロー更新時チェックリスト
+
+- [ ] 更新前のワークフローバージョンIDを記録
+- [ ] 変更内容を明確に定義
+- [ ] 部分更新の場合、必須パラメータが保持されるか確認
+- [ ] 更新後すぐにテスト実行
+- [ ] 成功するまで修正-テストサイクルを繰り返す
+- [ ] 最終成功後にドキュメント更新
+- [ ] 新しいバージョンIDを記録
+
+---
+
+## 実践例: WF6構築から学んだワークフロー
+
+### テストイテレーション記録
+
+```
+Iteration 1 (Execution 816):
+  問題: Node 8 (Notion登録) 失敗
+  原因: specifyBody: "string" + n8n式構文の誤用
+  修正: specifyBody: "json" + jsonBody に変更
+  結果: Node 8成功 → Node 9失敗
+
+Iteration 2 (Execution 817):
+  問題: Node 9 (Slack通知) 失敗
+  原因: 存在しないノード名参照 + プロパティ名誤り
+  修正: $('Select Topic').first().json.topicName に修正
+  結果: Node 9成功 → ワークフロー設定エラー
+
+Iteration 3 (Execution 822):
+  問題: ワークフロー設定エラー
+  原因: Node 9の部分更新により必須パラメータ欠落
+  修正: 完全パラメータセット適用
+  結果: 設定エラー解消 → 全ノード実行準備完了
+
+Iteration 4 (Execution 823):
+  結果: ✅ 完全成功
+  実行時間: 36.855秒
+  全ノード正常動作確認
+```
+
+### 今後のワークフロー構築への応用
+
+1. **設計時**: HTTP Request Nodeの`specifyBody`パラメータを最初から正しく設定
+2. **実装時**: ノード参照とプロパティアクセスを前ノード出力と照合
+3. **更新時**: 部分更新ではなく完全パラメータセット更新を優先
+4. **テスト時**: 高速な修正-テストサイクル、ドキュメントは成功後
+5. **デバッグ時**: 実行ログの詳細分析、段階的な問題切り分け
+
+---
+
+**このナレッジベースは実際のワークフロー構築経験から抽出されたものです。**
+**新しいワークフロー構築時にこのドキュメントを参照し、同じ過ちを繰り返さないようにしてください。**
+
+**最終更新**: 2025-11-04
+
+**出典**:
+- WF6 (tkmG4YSZyi5RLiPw): note記事自動生成 - HTTP Request Node v4設定、n8n式構文 (Execution 816-823)
+- WF7 (Phase1-5 + File Server 6 workflows): SNS動画生成パイプライン - Railway Webhook制限対応、File Server設計パターン (2025-11-01)
+- WF7 Phase4 (xvlnFeJJwHKMHBwK): Execute Commandノード改行問題、トラブルシューティング (Execution 101→146, 2025-11-04)

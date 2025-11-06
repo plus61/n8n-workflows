@@ -1,0 +1,20 @@
+{
+  "assets": [
+    {
+      "assetIndex": 0,
+      "fileUrl": "/tmp/test_asset_0.jpg"
+    },
+    {
+      "assetIndex": 1,
+      "fileUrl": "/tmp/test_asset_1.jpg"
+    },
+    {
+      "assetIndex": 2,
+      "fileUrl": "/tmp/test_asset_2.jpg"
+    },
+    {
+      "assetIndex": 3,
+      "fileUrl": "/tmp/test_asset_3.jpg"
+    }
+  ]
+}

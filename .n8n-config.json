@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "n8n Workflow Project Configuration",
+  "description": "Centralized configuration for n8n instance URLs and environment settings",
+  "version": "1.0.0",
+  "lastUpdated": "2025-11-05",
+
+  "n8n": {
+    "instance": {
+      "name": "n8n-python-production",
+      "url": "https://n8n-python-production-344b.up.railway.app",
+      "host": "n8n-python-production-344b.up.railway.app",
+      "platform": "Railway"
+    },
+    "deprecated": {
+      "oldUrl": "https://primary-production-cb87.up.railway.app",
+      "reason": "古いインスタンス - 使用禁止",
+      "migratedDate": "2025-11-05"
+    }
+  },
+
+  "webhooks": {
+    "base": "https://n8n-python-production-344b.up.railway.app/webhook",
+    "endpoints": {
+      "wf7Phase2": "/wf7-phase2-assets-google",
+      "wf7Phase3": "/wf7-phase3-audio",
+      "wf7Phase4": "/wf7-phase4-render",
+      "wf7FilesVideo": "/wf7-files-video",
+      "wf7FilesThumb": "/wf7-files-thumb",
+      "wf7FilesAudio": "/wf7-files-audio",
+      "wf7FilesSubtitle": "/wf7-files-subtitle",
+      "wf7VideoScript": "/wf7-video-script",
+      "wf8SnsPosting": "/wf8-sns-posting"
+    }
+  },
+
+  "environment": {
+    "required": [
+      "N8N_API_KEY",
+      "OPENAI_API_KEY",
+      "NOTION_API_TOKEN"
+    ],
+    "recommended": {
+      "N8N_HOST": "n8n-python-production-344b.up.railway.app",
+      "N8N_EDITOR_BASE_URL": "https://n8n-python-production-344b.up.railway.app",
+      "WEBHOOK_URL": "https://n8n-python-production-344b.up.railway.app",
+      "N8N_OAUTH_CALLBACK_URL": "https://n8n-python-production-344b.up.railway.app/rest/oauth2-credential/callback"
+    }
+  },
+
+  "validation": {
+    "rules": [
+      {
+        "name": "使用禁止URL検証",
+        "pattern": "primary-production-cb87\\.up\\.railway\\.app",
+        "severity": "error",
+        "message": "古いn8nインスタンスURL (primary-production-cb87) を使用しています。n8n-python-production-344b に変更してください。"
+      },
+      {
+        "name": "プロトコル必須検証",
+        "pattern": "^https://",
+        "severity": "warning",
+        "message": "URLにはhttps://プロトコルを含めてください。"
+      }
+    ]
+  }
+}

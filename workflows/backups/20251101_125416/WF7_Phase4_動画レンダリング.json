@@ -1,0 +1,10 @@
+{
+  "id": "VF3kFwJLKVq990jn",
+  "name": "WF7 Phase4: 動画レンダリング",
+  "active": true,
+  "nodes": 12,
+  "createdAt": "2025-10-29T14:26:07.613Z",
+  "updatedAt": "2025-11-01T01:41:28.209Z",
+  "webhookId": "wf7-phase4-render-webhook",
+  "webhookPath": "wf7-phase4-render"
+}

@@ -1,0 +1,30 @@
+{
+  "category": "data-processing",
+  "displayName": "Data Processing",
+  "description": "Data extraction, transformation, and loading (ETL) workflows",
+  "tags": ["data", "etl", "database", "api", "processing", "transformation"],
+  "icon": "🔄",
+  "commonNodes": [
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.set",
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.splitInBatches",
+    "n8n-nodes-base.aggregate"
+  ],
+  "useCases": [
+    {
+      "name": "API Data Sync",
+      "description": "Synchronize data between multiple APIs"
+    },
+    {
+      "name": "Data Transformation",
+      "description": "Transform and clean data for analysis"
+    },
+    {
+      "name": "Database Operations",
+      "description": "Automated database CRUD operations"
+    }
+  ],
+  "requiredCredentials": [],
+  "updated": "2025-11-05T00:00:00Z"
+}

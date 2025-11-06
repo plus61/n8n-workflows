@@ -1,0 +1,366 @@
+{
+  "name": "WF7 Render Callback Handler (Creatomate完了通知)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-render-callback",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-callback",
+      "name": "Creatomate Callback",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-800, 0],
+      "webhookId": "wf7-render-callback"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Creatomate callback data\nconst callback = $input.first().json.body || $input.first().json;\n\nconsole.log('Received callback:', JSON.stringify(callback));\n\n// Creatomate sends different payload structures based on status\nconst status = callback.status || callback.render_status;\nconst renderId = callback.id || callback.render_id;\nconst videoUrl = callback.url || callback.video_url || callback.output_url;\nconst metadata = callback.metadata || {};\n\nif (!renderId) {\n  throw new Error('Render ID not found in callback');\n}\n\nif (!metadata.articleId || !metadata.hubPageId) {\n  throw new Error('Required metadata missing: articleId or hubPageId');\n}\n\nreturn {\n  json: {\n    renderId,\n    status,\n    videoUrl,\n    articleId: metadata.articleId,\n    hubPageId: metadata.hubPageId,\n    title: metadata.title,\n    originalVideoUrl: metadata.originalVideoUrl,\n    originalAudioUrl: metadata.originalAudioUrl,\n    thumbnailUrl: callback.thumbnail_url || null,\n    duration: callback.duration || null,\n    fileSize: callback.file_size || null,\n    processedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-callback",
+      "name": "Callback解析",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "status-check",
+      "name": "Status Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare successful update for Hub DB\nconst data = $input.first().json;\n\n// サムネイル生成（最初のフレームを使用）\nconst thumbnailUrl = data.thumbnailUrl || data.videoUrl + '?frame=1';\n\nconst updatePayload = {\n  properties: {\n    'Workflow Status': {\n      select: {\n        name: 'Rendered'\n      }\n    },\n    'Render URL': {\n      url: data.videoUrl\n    },\n    'Thumbnail URL': {\n      url: thumbnailUrl\n    },\n    'Updated At': {\n      date: {\n        start: new Date().toISOString()\n      }\n    },\n    'Error Log': {\n      rich_text: [{\n        text: {\n          content: `✅ Rendering completed successfully\\nDuration: ${data.duration || 'N/A'}\\nFile size: ${data.fileSize || 'N/A'}\\nProcessed at: ${data.processedAt}`\n        }\n      }]\n    }\n  }\n};\n\nreturn {\n  json: {\n    hubPageId: data.hubPageId,\n    updatePayload,\n    articleId: data.articleId,\n    videoUrl: data.videoUrl,\n    thumbnailUrl,\n    status: 'success'\n  }\n};"
+      },
+      "id": "prepare-success-update",
+      "name": "成功時の更新準備",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-200, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare failed update for Hub DB\nconst data = $input.first().json;\n\nconst errorMessage = data.error_message || data.error || 'Unknown error during rendering';\n\nconst updatePayload = {\n  properties: {\n    'Workflow Status': {\n      select: {\n        name: 'Failed_Phase4'\n      }\n    },\n    'Updated At': {\n      date: {\n        start: new Date().toISOString()\n      }\n    },\n    'Error Log': {\n      rich_text: [{\n        text: {\n          content: `❌ Rendering failed\\nRender ID: ${data.renderId}\\nError: ${errorMessage}\\nStatus: ${data.status}\\nFailed at: ${data.processedAt}`\n        }\n      }]\n    }\n  }\n};\n\nreturn {\n  json: {\n    hubPageId: data.hubPageId,\n    updatePayload,\n    articleId: data.articleId,\n    error: errorMessage,\n    status: 'failed'\n  }\n};"
+      },
+      "id": "prepare-failure-update",
+      "name": "失敗時の更新準備",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-200, 100]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.hubPageId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_API_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.updatePayload }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-hub-success",
+      "name": "Hub DB更新 (成功)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [0, -100]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.hubPageId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_API_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.updatePayload }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-hub-failure",
+      "name": "Hub DB更新 (失敗)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [0, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase5-distribute",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {articleId: $json.articleId, videoUrl: $json.videoUrl, thumbnailUrl: $json.thumbnailUrl, title: $('Callback解析').first().json.title} }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "trigger-phase5",
+      "name": "Phase5トリガー",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [200, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.SLACK_WEBHOOK_URL }}xsTUtxvgCmGXMUSs1YeexI",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {text: '✅ WF7 Phase4完了: レンダリング成功\\n\\n📄 Article: ' + $json.articleId + '\\n🎬 Video URL: ' + $json.videoUrl + '\\n🖼️ Thumbnail: ' + ($json.thumbnailUrl || 'N/A') + '\\n\\n→ Phase5（配信）を開始します'} }}",
+        "options": {}
+      },
+      "id": "slack-success",
+      "name": "Slack通知 (成功)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [400, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.SLACK_WEBHOOK_URL }}xsTUtxvgCmGXMUSs1YeexI",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {text: '❌ WF7 Phase4失敗: レンダリングエラー\\n\\n📄 Article: ' + $json.articleId + '\\n❗ Error: ' + $json.error + '\\n\\nHub DBのError Logを確認してください'} }}",
+        "options": {}
+      },
+      "id": "slack-failure",
+      "name": "Slack通知 (失敗)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [200, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'success', message: 'Callback processed successfully', articleId: $json.articleId, workflowStatus: $json.status === 'success' ? 'Rendered' : 'Failed_Phase4'} }}",
+        "options": {}
+      },
+      "id": "respond-success",
+      "name": "Respond (成功)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [600, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'failed', message: 'Render failed', articleId: $json.articleId, error: $json.error} }}",
+        "options": {}
+      },
+      "id": "respond-failure",
+      "name": "Respond (失敗)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [400, 100]
+    }
+  ],
+  "connections": {
+    "Creatomate Callback": {
+      "main": [
+        [
+          {
+            "node": "Callback解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback解析": {
+      "main": [
+        [
+          {
+            "node": "Status Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Check": {
+      "main": [
+        [
+          {
+            "node": "成功時の更新準備",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "失敗時の更新準備",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "成功時の更新準備": {
+      "main": [
+        [
+          {
+            "node": "Hub DB更新 (成功)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "失敗時の更新準備": {
+      "main": [
+        [
+          {
+            "node": "Hub DB更新 (失敗)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hub DB更新 (成功)": {
+      "main": [
+        [
+          {
+            "node": "Phase5トリガー",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phase5トリガー": {
+      "main": [
+        [
+          {
+            "node": "Slack通知 (成功)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack通知 (成功)": {
+      "main": [
+        [
+          {
+            "node": "Respond (成功)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hub DB更新 (失敗)": {
+      "main": [
+        [
+          {
+            "node": "Slack通知 (失敗)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack通知 (失敗)": {
+      "main": [
+        [
+          {
+            "node": "Respond (失敗)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

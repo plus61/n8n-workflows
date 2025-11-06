@@ -1,0 +1,252 @@
+{
+  "name": "WF7 Phase4: Creatomate外部レンダリング (Hub統合版)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4-render",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Phase3完了Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-1200, 0],
+      "webhookId": "wf7-phase4-render"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input validation and data extraction\nconst body = $input.first().json.body || $input.first().json;\n\nif (!body.articleId || !body.videoUrl || !body.audioUrl) {\n  throw new Error('Required fields missing: articleId, videoUrl, audioUrl');\n}\n\nreturn {\n  json: {\n    articleId: body.articleId,\n    title: body.title || `Article ${body.articleId}`,\n    videoUrl: body.videoUrl,\n    audioUrl: body.audioUrl,\n    subtitleUrl: body.subtitleUrl || null,\n    duration: body.duration || 45,\n    createdAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "input-validation",
+      "name": "入力データ検証",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1000, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch Hub Context\nconst articleId = $input.first().json.articleId;\nconst NOTION_TOKEN = process.env.NOTION_API_TOKEN;\nconst HUB_DB_ID = '2a268d5c-2986-813c-a8e5-eba390fb71fd';\n\nconst searchPayload = {\n  filter: {\n    property: 'Article ID',\n    rich_text: {\n      equals: articleId\n    }\n  }\n};\n\ntry {\n  const response = await $http.post(\n    `https://api.notion.com/v1/databases/${HUB_DB_ID}/query`,\n    {\n      headers: {\n        'Authorization': `Bearer ${NOTION_TOKEN}`,\n        'Notion-Version': '2022-06-28',\n        'Content-Type': 'application/json'\n      },\n      body: searchPayload\n    }\n  );\n\n  let hubPageId;\n  if (!response.results || response.results.length === 0) {\n    throw new Error('Hub entry not found. Phase3 must complete first.');\n  } else {\n    hubPageId = response.results[0].id;\n  }\n\n  return {\n    json: {\n      ...($input.first().json),\n      hubContext: {\n        hubPageId,\n        articleId\n      }\n    }\n  };\n} catch (error) {\n  throw new Error(`Hub context fetch failed: ${error.message}`);\n}"
+      },
+      "id": "fetch-hub-context",
+      "name": "Fetch Hub Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Creatomate render payload\nconst data = $input.first().json;\nconst WEBHOOK_BASE = 'https://n8n-python-production-344b.up.railway.app/webhook';\n\n// Creatomate template ID (環境変数から取得するか、ハードコード)\nconst CREATOMATE_TEMPLATE_ID = process.env.CREATOMATE_TEMPLATE_ID || 'your-template-id';\n\nconst renderPayload = {\n  template_id: CREATOMATE_TEMPLATE_ID,\n  modifications: {\n    // 動画レイヤー\n    \"video-1\": {\n      source: data.videoUrl,\n      trim_duration: data.duration\n    },\n    // 音声レイヤー\n    \"audio-1\": {\n      source: data.audioUrl,\n      volume: 1.0\n    },\n    // タイトルテキスト\n    \"text-title\": {\n      text: data.title,\n      font_size: 48,\n      color: \"#FFFFFF\"\n    }\n  },\n  render_settings: {\n    format: \"mp4\",\n    quality: \"high\",\n    resolution: \"1080x1920\", // 縦型動画\n    fps: 30,\n    codec: \"h264\",\n    webhook_url: `${WEBHOOK_BASE}/wf7-render-callback`\n  },\n  metadata: {\n    articleId: data.articleId,\n    hubPageId: data.hubContext.hubPageId,\n    title: data.title,\n    originalVideoUrl: data.videoUrl,\n    originalAudioUrl: data.audioUrl\n  }\n};\n\n// 字幕がある場合は追加\nif (data.subtitleUrl) {\n  renderPayload.modifications[\"subtitle-1\"] = {\n    source: data.subtitleUrl,\n    style: {\n      font_size: 32,\n      color: \"#FFFF00\",\n      background_color: \"rgba(0,0,0,0.5)\"\n    }\n  };\n}\n\nreturn {\n  json: {\n    creatomatePayload: renderPayload,\n    hubContext: data.hubContext,\n    articleId: data.articleId\n  }\n};"
+      },
+      "id": "prepare-creatomate-payload",
+      "name": "Creatomateペイロード作成",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.CREATOMATE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.creatomatePayload }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "call-creatomate-api",
+      "name": "Creatomate API呼び出し",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Creatomate response and update Hub\nconst response = $input.first().json;\nconst previousNode = $('Creatomateペイロード作成').first().json;\n\nif (!response.id) {\n  throw new Error('Creatomate render ID not received');\n}\n\nconst updatePayload = {\n  properties: {\n    'Workflow Status': {\n      select: {\n        name: 'Rendering'\n      }\n    },\n    'Latest Execution ID': {\n      rich_text: [{\n        text: {\n          content: response.id || 'creatomate-' + Date.now()\n        }\n      }]\n    },\n    'Updated At': {\n      date: {\n        start: new Date().toISOString()\n      }\n    },\n    'Error Log': {\n      rich_text: [{\n        text: {\n          content: `Render started: ${response.id}\\nStatus: ${response.status || 'processing'}\\nEstimated time: 1-3 minutes`\n        }\n      }]\n    }\n  }\n};\n\nreturn {\n  json: {\n    hubPageId: previousNode.hubContext.hubPageId,\n    updatePayload,\n    creatomateRenderId: response.id,\n    creatomateStatus: response.status || 'processing',\n    articleId: previousNode.articleId\n  }\n};"
+      },
+      "id": "process-response",
+      "name": "レスポンス処理",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-200, 0]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.hubPageId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_API_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.updatePayload }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-hub-rendering",
+      "name": "Hub DB更新 (Rendering)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.SLACK_WEBHOOK_URL }}xsTUtxvgCmGXMUSs1YeexI",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {text: '🎬 WF7 Phase4: レンダリング開始\\n\\n📄 ' + $json.articleId + '\\n🆔 Render ID: ' + $json.creatomateRenderId + '\\n⏱️ 推定時間: 1-3分\\n📊 Status: Rendering\\n\\nCallback webhookで完了通知を受信します'} }}",
+        "options": {}
+      },
+      "id": "slack-notification",
+      "name": "Slack通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'success', message: 'Rendering started with Creatomate', articleId: $json.articleId, renderId: $json.creatomateRenderId, estimatedTime: '1-3 minutes', callbackWebhook: 'https://n8n-python-production-344b.up.railway.app/webhook/wf7-render-callback'} }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [400, 0]
+    }
+  ],
+  "connections": {
+    "Phase3完了Webhook": {
+      "main": [
+        [
+          {
+            "node": "入力データ検証",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "入力データ検証": {
+      "main": [
+        [
+          {
+            "node": "Fetch Hub Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Hub Context": {
+      "main": [
+        [
+          {
+            "node": "Creatomateペイロード作成",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Creatomateペイロード作成": {
+      "main": [
+        [
+          {
+            "node": "Creatomate API呼び出し",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Creatomate API呼び出し": {
+      "main": [
+        [
+          {
+            "node": "レスポンス処理",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "レスポンス処理": {
+      "main": [
+        [
+          {
+            "node": "Hub DB更新 (Rendering)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hub DB更新 (Rendering)": {
+      "main": [
+        [
+          {
+            "node": "Slack通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack通知": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

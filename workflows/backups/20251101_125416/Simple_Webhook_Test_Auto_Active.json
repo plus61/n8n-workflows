@@ -1,0 +1,10 @@
+{
+  "id": "h7AOOMtgwrMwMpiB",
+  "name": "Simple Webhook Test - Auto Active",
+  "active": true,
+  "nodes": 3,
+  "createdAt": "2025-10-30T03:13:05.880Z",
+  "updatedAt": "2025-10-30T09:17:03.424Z",
+  "webhookId": "test-webhook-auto-active",
+  "webhookPath": "test-webhook"
+}

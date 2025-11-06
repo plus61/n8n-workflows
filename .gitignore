@@ -1,0 +1,25 @@
+# MCP設定ファイル（機密情報を含むため）
+.cursor/mcp.json
+
+# macOS
+.DS_Store
+
+# Node modules
+node_modules/
+
+# ログファイル
+*.log
+
+# 環境変数ファイル
+.env
+.env.local
+.env.*.local
+
+# エディタ設定
+.vscode/
+.idea/
+
+# 一時ファイル
+*.tmp
+*.temp
+

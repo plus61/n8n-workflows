@@ -1,0 +1,10 @@
+{
+  "id": "fqbULAMXIGyBkNtL",
+  "name": "WF7 Phase1: SNS動画台本整形",
+  "active": true,
+  "nodes": 10,
+  "createdAt": "2025-10-29T14:25:13.570Z",
+  "updatedAt": "2025-11-01T01:16:14.631Z",
+  "webhookId": "wf7-phase1-video-script",
+  "webhookPath": "wf7-test-webhook"
+}

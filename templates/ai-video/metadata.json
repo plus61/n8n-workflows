@@ -1,0 +1,84 @@
+{
+  "category": "ai-video",
+  "displayName": "AI Video Automation",
+  "description": "AI-powered video generation, editing, and publishing workflows",
+  "tags": ["ai", "video", "automation", "youtube", "openai", "elevenlabs"],
+  "icon": "🎬",
+  "commonNodes": [
+    "n8n-nodes-base.httpRequest",
+    "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+    "@n8n/n8n-nodes-langchain.openAi",
+    "n8n-nodes-base.youTube",
+    "n8n-nodes-base.splitOut",
+    "n8n-nodes-base.wait",
+    "n8n-nodes-base.aggregate"
+  ],
+  "useCases": [
+    {
+      "name": "YouTube Shorts Automation",
+      "description": "End-to-end YouTube Shorts generation with AI scripts, voiceover, and visuals",
+      "templateIds": [2941, 3553]
+    },
+    {
+      "name": "Video Metadata Generation",
+      "description": "AI-powered SEO-optimized titles, descriptions, and tags for videos",
+      "templateIds": [2976]
+    },
+    {
+      "name": "AI Avatar Creation",
+      "description": "Create videos with AI avatars using HeyGen or Captions.ai",
+      "templateIds": [4107]
+    },
+    {
+      "name": "Dream Machine Integration",
+      "description": "Luma AI Dream Machine video generation workflows",
+      "templateIds": [3201]
+    }
+  ],
+  "requiredCredentials": [
+    {
+      "name": "OpenAI API",
+      "required": true,
+      "purpose": "Script generation and AI content creation"
+    },
+    {
+      "name": "ElevenLabs API",
+      "required": false,
+      "purpose": "AI voice synthesis and voiceover generation"
+    },
+    {
+      "name": "YouTube API",
+      "required": false,
+      "purpose": "Video uploading and metadata management"
+    },
+    {
+      "name": "Cloudinary",
+      "required": false,
+      "purpose": "Media asset storage and management"
+    },
+    {
+      "name": "Replicate API",
+      "required": false,
+      "purpose": "AI image and video generation"
+    }
+  ],
+  "integrationPoints": {
+    "wf7-video-renderer": {
+      "description": "wf7 can use AI script generation and voice synthesis components",
+      "compatibleTemplates": [2941, 3553],
+      "extractableComponents": [
+        "OpenAI script generator",
+        "ElevenLabs TTS integration",
+        "Video assembly logic"
+      ]
+    }
+  },
+  "learningResources": [
+    {
+      "type": "tutorial",
+      "title": "AI Video Automation Best Practices",
+      "url": "https://community.n8n.io"
+    }
+  ],
+  "updated": "2025-11-05T00:00:00Z"
+}

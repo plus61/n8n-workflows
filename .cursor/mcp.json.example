@@ -1,0 +1,85 @@
+{
+  "mcpServers": {
+    "n8n-mcp": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "n8n-mcp"],
+      "env": {
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true",
+        "N8N_API_URL": "YOUR_N8N_API_URL",
+        "N8N_API_KEY": "YOUR_N8N_API_KEY"
+      }
+    },
+    "n8n-workflows-docs": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "mcp-remote", "https://gitmcp.io/Zie619/n8n-workflows/blob/main/README.md"]
+    },
+    "context7-docs": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "mcp-remote", "https://gitmcp.io/upstash/context7"]
+    },
+    "mcp-sequential-thinking": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "docs-mcp-server": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "mcp-remote", "https://gitmcp.io/arabold/docs-mcp-server"]
+    },
+    "n8n-workflows": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "mcp-remote", "https://gitmcp.io/plus61/n8n-workflows"]
+    },
+    "chrome-devtools": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "chrome-devtools-mcp"]
+    },
+    "playwright": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "@executeautomation/playwright-mcp-server"]
+    },
+    "vercel": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "@mistertk/vercel-mcp"],
+      "env": {
+        "VERCEL_API_KEY": "YOUR_VERCEL_API_KEY"
+      }
+    },
+    "github": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN"
+      }
+    },
+    "obsidian": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": [
+        "-y",
+        "@smithery/cli",
+        "run",
+        "mcp-obsidian",
+        "--config",
+        "{\"vaultPath\":\"/path/to/your/vault\",\"apiKey\":\"YOUR_OBSIDIAN_API_KEY\",\"baseUrl\":\"http://127.0.0.1:27123\"}"
+      ]
+    },
+    "notion": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "@notionhq/notion-mcp-server"],
+      "env": {
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer YOUR_NOTION_API_KEY\", \"Notion-Version\": \"2022-06-28\"}"
+      }
+    },
+    "supabase": {
+      "command": "/Users/[ユーザー名]/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "YOUR_SUPABASE_ACCESS_TOKEN"
+      ]
+    }
+  }
+}
+

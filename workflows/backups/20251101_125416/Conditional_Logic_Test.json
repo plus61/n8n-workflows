@@ -1,0 +1,10 @@
+{
+  "id": "NgXgJuKJp15edOK4",
+  "name": "Conditional Logic Test",
+  "active": true,
+  "nodes": 4,
+  "createdAt": "2025-10-11T12:26:10.028Z",
+  "updatedAt": "2025-10-11T12:33:32.648Z",
+  "webhookId": "webhook-conditional-test",
+  "webhookPath": "conditional-test"
+}

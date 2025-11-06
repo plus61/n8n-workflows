@@ -1,0 +1,353 @@
+{
+  "name": "WF5: トピック抽出AI",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 3,6"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.notion.com/v1/databases/29968d5c-2986-81ad-90d0-c24ed710503e/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_NOTION_API_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filter\": {\n    \"and\": [\n      {\n        \"or\": [\n          {\n            \"property\": \"Status\",\n            \"select\": {\"equals\": \"検知済み\"}\n          },\n          {\n            \"property\": \"Status\",\n            \"select\": {\"equals\": \"分析済み\"}\n          }\n        ]\n      },\n      {\n        \"property\": \"Published Date\",\n        \"date\": {\n          \"after\": \"{{$now.minus({days: 30}).toISO()}}\"\n        }\n      }\n    ]\n  },\n  \"sorts\": [\n    {\"property\": \"View Count\", \"direction\": \"descending\"}\n  ],\n  \"page_size\": 100\n}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 3,
+            "waitBetween": 1000,
+            "backoffRate": 2
+          }
+        }
+      },
+      "id": "http-request-notion-query-2",
+      "name": "Notion Query - 過去30日の記事取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Notion APIレスポンスからデータ抽出してスコアリング\nconst notionResponse = $input.first().json;\nconst articles = notionResponse.results || [];\n\nconst scoredArticles = articles.map(page => {\n  const props = page.properties;\n\n  // プロパティから値を抽出（Notion API形式）\n  const title = props.Title?.title[0]?.text?.content || '';\n  const url = props.URL?.url || '';\n  const articleId = props['Article ID']?.rich_text[0]?.text?.content || '';\n  const viewCount = props['View Count']?.number || 0;\n  const likeCount = props['Like Count']?.number || 0;\n  const description = props.Description?.rich_text[0]?.text?.content || '';\n  const categories = props.Category?.multi_select?.map(c => c.name) || [];\n  const publishedDate = props['Published Date']?.date?.start || '';\n\n  // スコア計算: PV×0.6 + いいね×0.4\n  const score = (viewCount * 0.6) + (likeCount * 0.4);\n\n  return {\n    pageId: page.id,\n    title,\n    url,\n    articleId,\n    viewCount,\n    likeCount,\n    score,\n    description,\n    categories,\n    publishedDate\n  };\n});\n\n// スコア降順でソート\nscoredArticles.sort((a, b) => b.score - a.score);\n\nreturn scoredArticles.map(article => ({ json: article }));"
+      },
+      "id": "function-scoring-3",
+      "name": "Function - スコアリング",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// スコア上位10件を抽出\nconst articles = $input.all().map(item => item.json);\n\n// スコア上位10件を抽出\nconst top10 = articles.slice(0, 10);\n\nreturn [{ json: { articles: top10 } }];"
+      },
+      "id": "function-top10-4",
+      "name": "Function - トップ10記事抽出",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.GPT4_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4-turbo-preview\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"あなたはコンテンツストラテジストです。note記事データから、トレンドトピックを抽出してください。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"以下の人気note記事データから、トレンドトピックを抽出してください。\\n\\n【データ】\\n\" + JSON.stringify($json.articles, null, 2) + \"\\n\\n【分析観点】\\n1. 共通キーワードの抽出（5-10個）\\n2. ユーザーニーズの推定（保護者の悩み・関心）\\n3. 次に書くべきトピック提案（5つ、優先度順）\\n\\n【ターゲット】\\n3-10歳の子供を持つ保護者、英語教育・バイリンガル教育に関心\\n\\n【出力形式】\\n必ずJSON形式のみで出力してください。それ以外のテキストは含めないでください。\\n{\\n  \\\"trendKeywords\\\": [\\\"キーワード1\\\", \\\"キーワード2\\\", ...],\\n  \\\"userNeeds\\\": \\\"ニーズ分析テキスト\\\",\\n  \\\"nextTopics\\\": [\\n    {\\\"topic\\\": \\\"トピック名\\\", \\\"priority\\\": 1, \\\"reason\\\": \\\"理由\\\"},\\n    ...\\n  ]\\n}\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 1500\n}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 2,
+            "waitBetween": 1000
+          }
+        }
+      },
+      "id": "http-request-gpt4-5",
+      "name": "GPT-4 API - トピック抽出",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// GPT-4レスポンスをパース\nconst gptResponse = $input.first().json;\nconst content = gptResponse.choices[0].message.content;\n\n// JSONパース\nlet analysis;\ntry {\n  analysis = JSON.parse(content);\n} catch (e) {\n  // パースエラー時はSlack通知用にエラーをthrow\n  throw new Error(`GPT-4レスポンスのJSON parse失敗: ${content}`);\n}\n\nreturn [{ json: analysis }];"
+      },
+      "id": "function-parse-gpt4-6",
+      "name": "Function - GPT-4レスポンスパース",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// トピックデータ前処理: 関連記事紐付け、平均スコア計算\nconst analysis = $input.first().json;\nconst top10Articles = $('Function - トップ10記事抽出').first().json.articles;\n\n// 各トピックに関連記事を紐付け\nconst topics = analysis.nextTopics.map(topic => {\n  // トピックキーワードに関連する記事を抽出\n  const relatedArticles = top10Articles.filter(article => {\n    const matchKeyword = analysis.trendKeywords.some(keyword =>\n      article.title.includes(keyword) ||\n      article.description.includes(keyword) ||\n      article.categories.includes(keyword)\n    );\n    return matchKeyword;\n  });\n\n  // 関連記事のNotion Page IDを取得\n  const relatedArticleIds = relatedArticles.map(a => a.pageId);\n\n  // 平均スコア計算\n  const avgScore = relatedArticles.length > 0\n    ? relatedArticles.reduce((sum, a) => sum + a.score, 0) / relatedArticles.length\n    : 0;\n\n  return {\n    topic: topic.topic,\n    priority: topic.priority,\n    reason: topic.reason,\n    trendKeywords: analysis.trendKeywords,\n    relatedArticleIds,\n    avgScore\n  };\n});\n\nreturn topics.map(t => ({ json: t }));"
+      },
+      "id": "function-preprocessing-7",
+      "name": "Function - トピックデータ前処理",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches-8",
+      "name": "Loop - トピック登録",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_NOTION_API_TOKEN"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"parent\": {\n    \"database_id\": \"{{$env.TOPIC_MASTER_DB_ID}}\"\n  },\n  \"properties\": {\n    \"Topic Name\": {\n      \"title\": [\n        {\"text\": {\"content\": \"{{$json.topic}}\"}}\n      ]\n    },\n    \"Score\": {\n      \"number\": {{$json.avgScore}}\n    },\n    \"Keywords\": {\n      \"multi_select\": {{$json.trendKeywords.map(k => ({name: k}))| json}}\n    },\n    \"Related Articles\": {\n      \"relation\": {{$json.relatedArticleIds.map(id => ({id: id}))| json}}\n    },\n    \"Extracted At\": {\n      \"date\": {\"start\": \"{{$now.toISO()}}\"}\n    },\n    \"Status\": {\n      \"select\": {\"name\": \"active\"}\n    }\n  }\n}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 3,
+            "waitBetween": 1000
+          }
+        }
+      },
+      "id": "http-request-notion-create-9",
+      "name": "Notion - トピックマスタ更新",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "amount": 400,
+        "unit": "milliseconds"
+      },
+      "id": "wait-10",
+      "name": "Wait - レート制限対策",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.SLACK_WEBHOOK_URL}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"📊 *今週のトレンドトピック分析完了*\",\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"🔥 トレンドトピック Top 5\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"{{$('Function - トピックデータ前処理').all().map((t, i) => `${i+1}. *${t.json.topic}*\\nスコア: ${t.json.avgScore.toFixed(1)} | 関連記事: ${t.json.relatedArticleIds.length}件\\n理由: ${t.json.reason}`).join('\\n\\n')}}\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*トレンドキーワード*: {{$('Function - GPT-4レスポンスパース').first().json.trendKeywords.join(', ')}}\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "http-request-slack-11",
+      "name": "Slack - トピック通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2250, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Notion Query - 過去30日の記事取得",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion Query - 過去30日の記事取得": {
+      "main": [
+        [
+          {
+            "node": "Function - スコアリング",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - スコアリング": {
+      "main": [
+        [
+          {
+            "node": "Function - トップ10記事抽出",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - トップ10記事抽出": {
+      "main": [
+        [
+          {
+            "node": "GPT-4 API - トピック抽出",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4 API - トピック抽出": {
+      "main": [
+        [
+          {
+            "node": "Function - GPT-4レスポンスパース",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - GPT-4レスポンスパース": {
+      "main": [
+        [
+          {
+            "node": "Function - トピックデータ前処理",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - トピックデータ前処理": {
+      "main": [
+        [
+          {
+            "node": "Loop - トピック登録",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop - トピック登録": {
+      "main": [
+        [
+          {
+            "node": "Notion - トピックマスタ更新",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack - トピック通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion - トピックマスタ更新": {
+      "main": [
+        [
+          {
+            "node": "Wait - レート制限対策",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - レート制限対策": {
+      "main": [
+        [
+          {
+            "node": "Loop - トピック登録",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 300,
+    "timezone": "Asia/Tokyo"
+  },
+  "staticData": null,
+  "tags": ["Phase2", "AI", "Notion", "GPT-4"],
+  "meta": {
+    "instanceId": "n8n-workflows-phase2"
+  }
+}

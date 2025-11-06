@@ -1,0 +1,24 @@
+{
+  "articleId": "demo-article",
+  "version": "1.0",
+  "assets": [
+    {
+      "assetIndex": 0,
+      "assetTag": "hook",
+      "fileUrl": "/data/assets/asset0.jpg",
+      "source": "demo"
+    },
+    {
+      "assetIndex": 1,
+      "assetTag": "solution",
+      "fileUrl": "/data/assets/asset1.jpg",
+      "source": "demo"
+    },
+    {
+      "assetIndex": 2,
+      "assetTag": "cta",
+      "fileUrl": "/data/assets/asset2.jpg",
+      "source": "demo"
+    }
+  ]
+}

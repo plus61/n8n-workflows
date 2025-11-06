@@ -1,0 +1,10 @@
+# MoviePy 1.0.3公式推奨バージョン（実績あり）
+moviepy==1.0.3
+Pillow==9.0.0
+numpy==1.21.0
+decorator==4.4.2
+tqdm==4.62.0
+imageio==2.9.0
+imageio-ffmpeg==0.4.5
+requests==2.31.0
+

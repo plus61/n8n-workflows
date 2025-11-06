@@ -1,0 +1,130 @@
+{
+  "generated": "2025-11-05T00:00:00.000Z",
+  "version": "1.0.0",
+  "description": "Searchable index of n8n community templates organized by category",
+  "totalTemplates": 10,
+  "statistics": {
+    "totalCategories": 5,
+    "byCategory": {
+      "ai-video": 10,
+      "content-creation": 0,
+      "data-processing": 0,
+      "social-media": 0,
+      "business-automation": 0
+    },
+    "topNodes": {
+      "n8n-nodes-base.httpRequest": 10,
+      "@n8n/n8n-nodes-langchain.lmChatOpenAi": 7,
+      "n8n-nodes-base.wait": 9,
+      "n8n-nodes-base.googleSheets": 6,
+      "n8n-nodes-base.stickyNote": 10,
+      "@n8n/n8n-nodes-langchain.openAi": 6,
+      "n8n-nodes-base.set": 7,
+      "n8n-nodes-base.youTube": 2,
+      "n8n-nodes-base.googleDrive": 7,
+      "@n8n/n8n-nodes-langchain.agent": 7
+    }
+  },
+  "categories": [
+    {
+      "name": "ai-video",
+      "displayName": "AI Video Automation",
+      "description": "AI-powered video generation, editing, and publishing workflows",
+      "tags": ["ai", "video", "automation", "youtube", "openai", "elevenlabs"],
+      "query": "AI video automation generation",
+      "templateCount": 10,
+      "templates": [
+        {
+          "id": 3201,
+          "name": "Automate Video Creation with Luma AI Dream Machine and Airtable (Part 2)",
+          "description": "Webhook-based video generation completion workflow using Luma AI",
+          "nodeCount": 8,
+          "nodes": ["n8n-nodes-base.webhook", "n8n-nodes-base.set", "n8n-nodes-base.airtable"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 2976,
+          "name": "Automatically Create YouTube Metadata with AI",
+          "description": "AI-powered SEO-optimized video metadata generation for YouTube",
+          "nodeCount": 11,
+          "nodes": ["n8n-nodes-base.formTrigger", "@n8n/n8n-nodes-langchain.lmChatOpenAi", "n8n-nodes-base.youTube"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 5910,
+          "name": "Auto-Generate and Post Instagram Reels with Veo3, OpenAI, and Blotato",
+          "description": "End-to-end Instagram Reels automation with AI video generation",
+          "nodeCount": 21,
+          "nodes": ["@n8n/n8n-nodes-langchain.chatTrigger", "@n8n/n8n-nodes-langchain.openAi", "n8n-nodes-base.googleSheets"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 4056,
+          "name": "Generate Images and Convert to Video Using Flux, Kraken & Runway",
+          "description": "Multi-stage image-to-video generation pipeline",
+          "nodeCount": 22,
+          "nodes": ["n8n-nodes-base.httpRequest", "n8n-nodes-base.wait", "n8n-nodes-base.switch"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 4630,
+          "name": "Generate Videos with AI, ElevenLabs,PIAPI Shotstack/Creatomate & Post to Youtube",
+          "description": "Comprehensive AI video generation with voice synthesis and YouTube publishing",
+          "nodeCount": 78,
+          "nodes": ["@n8n/n8n-nodes-langchain.agent", "@n8n/n8n-nodes-langchain.lmChatOpenAi", "n8n-nodes-base.youTube"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 3553,
+          "name": "AI-Powered YouTube Shorts Automation: Create & Publish with OpenAI & ElevenLabs",
+          "description": "Complete YouTube Shorts automation with AI script, voice, and visual generation",
+          "nodeCount": 75,
+          "nodes": ["@n8n/n8n-nodes-langchain.openAi", "n8n-nodes-base.telegramTrigger", "n8n-nodes-base.youTube"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 4620,
+          "name": "Automated Google Drive to Facebook Ads: One-Click Video Marketing Workflow",
+          "description": "Google Drive video automation for Facebook Ads",
+          "nodeCount": 13,
+          "nodes": ["n8n-nodes-base.googleDrive", "n8n-nodes-base.httpRequest"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 5849,
+          "name": "Generate Instagram Reels with Veo3 and GPT for AI-Powered Ad Creation",
+          "description": "Instagram Reels generation with Veo3 and GPT-4",
+          "nodeCount": 16,
+          "nodes": ["@n8n/n8n-nodes-langchain.chatTrigger", "@n8n/n8n-nodes-langchain.openAi", "n8n-nodes-base.googleSheets"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 5596,
+          "name": "Generate Brand Marketing Shorts with GPT-4, FAL AI & ElevenLabs for Social Media",
+          "description": "Brand marketing video generation for social media platforms",
+          "nodeCount": 42,
+          "nodes": ["@n8n/n8n-nodes-langchain.lmChatOpenRouter", "n8n-nodes-base.googleDrive", "n8n-nodes-base.httpRequest"],
+          "popularity": 0,
+          "relevance": "high"
+        },
+        {
+          "id": 3814,
+          "name": "Generate AI Songs + Music Videos Using Suno API, Flux, Runway and Creatomate",
+          "description": "AI music and music video generation workflow",
+          "nodeCount": 60,
+          "nodes": ["@n8n/n8n-nodes-langchain.lmChatOpenAi", "n8n-nodes-base.telegramTrigger", "n8n-nodes-base.googleSheets"],
+          "popularity": 0,
+          "relevance": "high"
+        }
+      ]
+    }
+  ]
+}

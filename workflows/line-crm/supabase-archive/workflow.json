@@ -1,0 +1,135 @@
+{
+  "name": "LINE Lead Pipeline - Supabase",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "line-lead",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "LINE Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "line-lead"
+    },
+    {
+      "parameters": {
+        "functionCode": "// LINE Webhook Data Validation & Transform for Supabase\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  try {\n    const payload = item.json;\n    \n    // [VALIDATION] LINE検証リクエスト検出（空配列）\n    if (!payload.events || payload.events.length === 0) {\n      console.log('[VALIDATION] LINE verification request detected - skipping');\n      // shouldStopフラグを設定してワークフローを停止\n      return [{ json: { shouldStop: true, reason: 'LINE verification request' } }];\n    }\n    \n    // [VALIDATION] 必須フィールド確認\n    const event = payload.events[0];\n    if (!event || !event.type || !event.source || !event.source.userId) {\n      throw new Error('Missing required fields in event');\n    }\n    \n    // [VALIDATION] followイベントのみ処理\n    if (event.type !== 'follow') {\n      console.log(`[VALIDATION] Skipping non-follow event: ${event.type}`);\n      return [{ json: { shouldStop: true, reason: `Non-follow event: ${event.type}` } }];\n    }\n    \n    // [TRANSFORM] lead_id生成（n8n実行ID + タイムスタンプ）\n    const executionId = $execution.id || 'unknown';\n    const timestamp = event.timestamp || Date.now();\n    const lead_id = `${executionId}-${timestamp}`;\n    \n    // [TRANSFORM] タイムスタンプをJST（UTC+9）に変換\n    const eventDate = new Date(timestamp);\n    const processedDate = new Date();\n    \n    // ISO 8601形式でタイムゾーン付き（PostgreSQL TIMESTAMPTZ用）\n    const timestamp_jst = eventDate.toISOString();\n    const processed_at = processedDate.toISOString();\n    \n    // [OUTPUT] Supabase用データ構造\n    const transformedData = {\n      lead_id: lead_id,\n      user_id: event.source.userId,\n      display_name: '',  // 後でLINE APIから取得\n      picture_url: '',   // 後でLINE APIから取得\n      timestamp_jst: timestamp_jst,\n      processed_at: processed_at,\n      source: 'webhook',\n      status: 'pending'\n    };\n    \n    console.log('[SUCCESS] Data validation and transformation completed');\n    console.log('[DATA]', JSON.stringify(transformedData, null, 2));\n    \n    results.push({ json: transformedData });\n    \n  } catch (error) {\n    console.error('[ERROR] Validation failed:', error.message);\n    throw error;\n  }\n}\n\nreturn results;"
+      },
+      "id": "data-validation",
+      "name": "Data Validation & Transform",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "line_leads",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.lead_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "display_name": "={{ $json.display_name }}",
+            "picture_url": "={{ $json.picture_url }}",
+            "timestamp_jst": "={{ $json.timestamp_jst }}",
+            "processed_at": "={{ $json.processed_at }}",
+            "source": "={{ $json.source }}",
+            "status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "postgres-insert",
+      "name": "Supabase Insert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "PLACEHOLDER_CREDENTIAL_ID",
+          "name": "Supabase PostgreSQL (gmeo_00)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Success Log\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const insertedData = item.json;\n  \n  console.log('[SUCCESS] Record inserted into Supabase');\n  console.log('[RECORD_ID]', insertedData.id || 'N/A');\n  console.log('[USER_ID]', insertedData.user_id || 'N/A');\n  console.log('[LEAD_ID]', insertedData.lead_id || 'N/A');\n  \n  results.push({\n    json: {\n      success: true,\n      message: 'LINE lead successfully recorded',\n      record_id: insertedData.id,\n      user_id: insertedData.user_id,\n      lead_id: insertedData.lead_id,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "success-log",
+      "name": "Success Log",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Error Handler\nconst error = $input.first().json.error || {};\nconst executionId = $execution.id || 'unknown';\n\nconsole.error('[ERROR] Workflow execution failed');\nconsole.error('[EXECUTION_ID]', executionId);\nconsole.error('[ERROR_MESSAGE]', error.message || 'Unknown error');\nconsole.error('[ERROR_STACK]', error.stack || 'No stack trace');\n\nreturn [{\n  json: {\n    success: false,\n    error: {\n      message: error.message || 'Internal server error',\n      type: error.name || 'Error',\n      execution_id: executionId,\n      timestamp: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 400]
+    }
+  ],
+  "connections": {
+    "LINE Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Validation & Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Validation & Transform": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Insert": {
+      "main": [
+        [
+          {
+            "node": "Success Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-25T00:00:00.000Z",
+  "versionId": "1"
+}
+

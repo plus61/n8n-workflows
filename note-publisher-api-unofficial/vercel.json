@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "pages/api/publish-note.ts": {
+      "maxDuration": 30,
+      "memory": 512
+    }
+  }
+}

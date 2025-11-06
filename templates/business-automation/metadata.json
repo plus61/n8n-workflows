@@ -1,0 +1,29 @@
+{
+  "category": "business-automation",
+  "displayName": "Business Automation",
+  "description": "Business process automation and CRM workflows",
+  "tags": ["business", "crm", "sales", "automation", "productivity"],
+  "icon": "💼",
+  "commonNodes": [
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.webhook",
+    "n8n-nodes-base.emailSend",
+    "n8n-nodes-base.set"
+  ],
+  "useCases": [
+    {
+      "name": "CRM Integration",
+      "description": "Automate CRM data synchronization"
+    },
+    {
+      "name": "Sales Pipeline",
+      "description": "Automated sales process workflows"
+    },
+    {
+      "name": "Customer Notifications",
+      "description": "Automated customer communication"
+    }
+  ],
+  "requiredCredentials": [],
+  "updated": "2025-11-05T00:00:00Z"
+}

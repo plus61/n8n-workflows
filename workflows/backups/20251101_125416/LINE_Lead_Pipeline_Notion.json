@@ -1,0 +1,10 @@
+{
+  "id": "cmp1aRcobG9TYpAu",
+  "name": "LINE Lead Pipeline - Notion",
+  "active": true,
+  "nodes": 13,
+  "createdAt": "2025-10-26T02:13:56.843Z",
+  "updatedAt": "2025-10-27T06:12:53.177Z",
+  "webhookId": "09ce32ec-f7d7-4c30-b56a-ee458b4b8c17",
+  "webhookPath": "line-lead-notion"
+}

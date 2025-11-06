@@ -1,0 +1,43 @@
+# WF7 Phase4 FastAPI Render Server
+# Standalone service for FFmpeg rendering
+FROM python:3.11-alpine
+
+# Install FFmpeg, Japanese fonts, and build dependencies for numpy
+RUN apk add --no-cache \
+    ffmpeg \
+    font-noto-cjk \
+    fontconfig \
+    bash \
+    gcc \
+    musl-dev \
+    python3-dev \
+    py3-numpy
+
+# Update font cache
+RUN fc-cache -fv
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+# Use system numpy and install other packages
+RUN pip install --no-cache-dir \
+    fastapi==0.109.0 \
+    uvicorn[standard]==0.27.0 \
+    pydantic==2.5.3 \
+    python-multipart==0.0.6 \
+    Pillow==10.2.0
+
+# Copy application files
+COPY workflows/wf7-video-renderer/render_server.py /app/render_server.py
+COPY workflows/wf7-video-renderer/render_video_ffmpeg.py /app/render_video_ffmpeg.py
+COPY workflows/wf7-video-renderer/templates /app/templates
+
+# Make scripts executable
+RUN chmod +x /app/render_server.py /app/render_video_ffmpeg.py
+
+# Expose port 8000
+EXPOSE 8000
+
+# Run the FastAPI server
+CMD ["python3", "/app/render_server.py"]

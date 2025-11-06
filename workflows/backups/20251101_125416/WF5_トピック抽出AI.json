@@ -1,0 +1,9 @@
+{
+  "id": "jhhxhXABBwXxQ1GJ",
+  "name": "WF5: トピック抽出AI",
+  "active": true,
+  "nodes": 11,
+  "createdAt": "2025-10-27T17:00:06.307Z",
+  "updatedAt": "2025-10-29T02:59:40.907Z",
+  "schedule": "0 9 * * 3,6"
+}

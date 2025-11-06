@@ -1,0 +1,37 @@
+{
+  "id": "RffNVk7h3Q6aEfY0",
+  "name": "WF4: note Article Detection System (Notion版)",
+  "active": true,
+  "nodes": 10,
+  "createdAt": "2025-10-27T07:41:51.128Z",
+  "updatedAt": "2025-10-27T13:10:01.959Z",
+  "workflow": {
+    "id": "RffNVk7h3Q6aEfY0",
+    "name": "WF4: note Article Detection System (Notion版)",
+    "active": true,
+    "nodes": [
+      {
+        "id": "schedule-trigger",
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [240, 300],
+        "parameters": {
+          "rule": {
+            "interval": [{"field": "minutes", "minutesInterval": 15}]
+          }
+        }
+      },
+      {
+        "id": "rss-feed-read",
+        "name": "RSS Feed Read",
+        "type": "n8n-nodes-base.rssFeedRead",
+        "typeVersion": 1.2,
+        "position": [460, 300],
+        "parameters": {"url": "https://note.com/61beef/rss"}
+      }
+    ],
+    "connections": {},
+    "settings": {}
+  }
+}
