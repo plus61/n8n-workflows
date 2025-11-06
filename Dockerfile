@@ -19,12 +19,16 @@ RUN fc-cache -fv
 # nodeユーザーに戻す（n8nの標準ユーザー）
 USER node
 
+# n8n環境変数設定（Railwayの環境変数で上書き可能）
+ENV N8N_PROTOCOL=https
+ENV N8N_HOST=n8n-python-production-344b.up.railway.app
+ENV WEBHOOK_URL=https://n8n-python-production-344b.up.railway.app/
+
 # Railway healthcheck configuration
 ENV RAILWAY_HEALTHCHECK_TIMEOUT_SEC=300
 
-# n8n port
+# n8n port (RailwayのPORT環境変数を使用)
 EXPOSE 5678
 
-# n8n標準のentrypointとコマンドを使用
-# Railway's PORT env var will be mapped to 5678
+# n8n標準起動（Railwayが自動的にPORTを注入）
 CMD ["n8n"]
