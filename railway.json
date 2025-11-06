@@ -4,14 +4,10 @@
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
     "watchPatterns": [
-      "Dockerfile",
-      "workflows/wf7-video-renderer/**",
-      "supervisord.conf"
+      "Dockerfile"
     ]
   },
   "deploy": {
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
