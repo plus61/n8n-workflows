@@ -35,5 +35,6 @@ ENV RAILWAY_HEALTHCHECK_TIMEOUT_SEC=300
 EXPOSE 5678
 
 # n8n標準起動（Railwayが自動的にPORTを注入）
-# n8n公式イメージのENTRYPOINTを継承してCMDのみ指定
-CMD ["n8n", "start"]
+# 完全パスを指定してENTRYPOINT問題を回避
+ENTRYPOINT []
+CMD ["/usr/local/bin/node", "/usr/local/bin/n8n", "start"]
