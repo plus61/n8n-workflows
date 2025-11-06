@@ -31,5 +31,5 @@ ENV RAILWAY_HEALTHCHECK_TIMEOUT_SEC=300
 EXPOSE 5678
 
 # n8n標準起動（Railwayが自動的にPORTを注入）
-# Metal Build Environment用に明示的なコマンドを使用
-CMD ["tini", "--", "/docker-entrypoint.sh", "n8n"]
+# n8n公式イメージのENTRYPOINTを継承してCMDのみ指定
+CMD ["n8n", "start"]
