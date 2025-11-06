@@ -1,6 +1,7 @@
 # Railway n8n Dockerfile (n8n専用 - Creatomate統合版)
-# Build timestamp: 2025-11-06 02:30 JST
+# Build timestamp: 2025-11-06 03:27 JST
 # Note: Phase4はCreatomate外部レンダリングを使用（FastAPI不要）
+# Force rebuild to clear Railway cache
 FROM n8nio/n8n:latest
 
 # rootユーザーで追加パッケージをインストール
