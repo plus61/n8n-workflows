@@ -33,3 +33,12 @@ tests/
 dist/
 build/
 *.egg-info/
+
+# FastAPI/Python renderer (Creatomate統合により不要)
+workflows/wf7-video-renderer/
+supervisord.conf
+
+# スクリーンショット
+*.png
+*.jpg
+*.jpeg
