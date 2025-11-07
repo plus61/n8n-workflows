@@ -1,15 +1,19 @@
 {
   "assets": [
     {
-      "driveFileId": "1_test_drive_file_id_1",
+      "driveFileId": "1t3BFRFgHMLYhmfp9BobiNhdK3DlUhUaC",
       "assetTag": "intro_image"
     },
     {
-      "driveFileId": "1_test_drive_file_id_2",
+      "driveFileId": "1qyNTS3pX21H_EM6myRt9cvMBM5G1RDf7",
       "assetTag": "main_image"
     },
     {
-      "driveFileId": "1_test_drive_file_id_3",
+      "driveFileId": "1d4PlR2_JcXvLXVB38jyU5zdzbAE-KgQd",
+      "assetTag": "content_image"
+    },
+    {
+      "driveFileId": "1M_otlP9GkT2jKqr8uZL5HgtRWuSYO5Ex",
       "assetTag": "outro_image"
     }
   ]

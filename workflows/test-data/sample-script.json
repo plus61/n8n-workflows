@@ -11,6 +11,10 @@
     {
       "duration": 5,
       "text": "Third segment - 5 seconds"
+    },
+    {
+      "duration": 5,
+      "text": "Fourth segment - 5 seconds"
     }
   ]
 }
