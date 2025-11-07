@@ -232,7 +232,7 @@ NOTION_WF7_MASTER_DB_ID=29b68d5c-2986-817f-b4e6-f84cf75ea9ed
 GOOGLE_DRIVE_WF7_FOLDER_ID=<FolderID>
 CLOUD_RUN_RENDERER_URL=https://wf7-renderer-xxxxx.run.app
 VOICEVOX_URL=http://localhost:50021
-WF8_WEBHOOK_URL=https://your-n8n.com/webhook/wf8-sns-publish
+WF8_WEBHOOK_URL=https://n8n-python-production-344b.up.railway.app/webhook/wf8-sns-publish
 ```
 
 ### Notion API認証設定
@@ -294,7 +294,7 @@ n8n UIで以下を設定：
 ### 1. Phase 1単体テスト（Notion版）
 
 ```bash
-curl -X POST https://your-n8n.com/webhook/wf7-video-script \
+curl -X POST https://n8n-python-production-344b.up.railway.app/webhook/wf7-video-script \
   -H "Content-Type: application/json" \
   -d '{
     "articleId": "note-test002",

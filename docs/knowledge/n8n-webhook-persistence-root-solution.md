@@ -306,11 +306,11 @@ services:
     command: |
       sh -c 'while true; do
         echo "🔄 Checking webhooks..."
-        curl -X GET "https://your-n8n.railway.app/api/v1/workflows" \
+        curl -X GET "https://n8n-python-production-344b.up.railway.app/api/v1/workflows" \
           -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
           | jq -r ".data[] | select(.active == true) | .id" \
           | while read id; do
-              curl -X PATCH "https://your-n8n.railway.app/api/v1/workflows/$id" \
+              curl -X PATCH "https://n8n-python-production-344b.up.railway.app/api/v1/workflows/$id" \
                 -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
                 -H "Content-Type: application/json" \
                 -d "{\"settings\": {\"executionOrder\": \"v1\"}}"

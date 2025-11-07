@@ -39,7 +39,7 @@ Notion Database
 - リッチメニューイベントの処理
 - Notionへのデータ登録・更新
 
-**Webhook URL**: `https://your-n8n-instance.com/webhook/line-lead-notion`
+**Webhook URL**: `https://n8n-python-production-344b.up.railway.app/webhook/line-lead-notion`
 
 ### 2. LINE Step Delivery System
 
@@ -105,7 +105,7 @@ NOTION_DATABASE_ID=your_database_id
 LINE Developers ConsoleでWebhook URLを設定します。
 
 ```
-https://your-n8n-instance.com/webhook/line-lead-notion
+https://n8n-python-production-344b.up.railway.app/webhook/line-lead-notion
 ```
 
 ## 📊 Notionデータベース構造

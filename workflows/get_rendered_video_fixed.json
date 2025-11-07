@@ -1,0 +1,45 @@
+{
+  "name": "Get Rendered Video - Fixed",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.response_url + '/result' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendBody": false,
+        "sendHeaders": false,
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-rendered-video-fixed",
+      "name": "Get Rendered Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "n8n-python-production"
+  },
+  "id": "get-rendered-video-fixed",
+  "tags": []
+}

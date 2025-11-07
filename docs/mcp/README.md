@@ -141,7 +141,7 @@ n8n-mcp トラブルシューティング: continueOnFail削除問題
       "command": "/path/to/npx",
       "args": ["-y", "n8n-mcp"],
       "env": {
-        "N8N_API_URL": "https://your-n8n-instance.com",
+        "N8N_API_URL": "https://n8n-python-production-344b.up.railway.app",
         "N8N_API_KEY": "your-api-key"
       }
     }
@@ -160,7 +160,7 @@ n8n-mcp トラブルシューティング: continueOnFail削除問題
       "command": "/path/to/npx",
       "args": ["-y", "n8n-mcp"],
       "env": {
-        "N8N_API_URL": "https://your-n8n-instance.com",
+        "N8N_API_URL": "https://n8n-python-production-344b.up.railway.app",
         "N8N_API_KEY": "your-api-key"
       }
     }

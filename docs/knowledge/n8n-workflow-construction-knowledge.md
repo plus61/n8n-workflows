@@ -831,7 +831,7 @@ return [{
 **n8n UI保存後の確認手順**:
 ```bash
 # 1. Webhookエンドポイントに直接アクセス
-curl https://your-app.up.railway.app/webhook/wf7-files-script?articleId=test
+curl https://n8n-python-production-344b.up.railway.app/webhook/wf7-files-script?articleId=test
 
 # 2. 200 OKまたは正常なエラーメッセージが返れば登録成功
 # 3. 404エラーならWebhook未登録またはパスパラメータ問題
@@ -1104,7 +1104,421 @@ n8n_get_workflow({
 
 ---
 
-## 9. チェックリスト
+## 9. 非同期API処理とポーリングループ
+
+### 🚨 Critical: fal.ai Queue APIの非同期処理パターン
+
+#### ルール1: 非同期APIは必ずポーリングループを実装
+
+**fal.ai Queue APIの特性**:
+- リクエスト後すぐに完了しない（非同期処理）
+- ステータス遷移: `IN_QUEUE` → `IN_PROGRESS` → `COMPLETED`
+- 処理時間: 5-30秒程度（動画の長さや複雑さに依存）
+
+**❌ 動作しないパターン** (単純な待機):
+```json
+{
+  "nodes": [
+    {"name": "FFmpegレンダラー", "type": "httpRequest"},
+    {"name": "Wait 5 Seconds", "type": "wait"},
+    {"name": "Check Render Status", "type": "httpRequest"},
+    {"name": "Get Rendered Video", "type": "set"}
+  ]
+}
+```
+
+**問題点**:
+- 5秒では完了しない場合がある
+- ステータスが`IN_PROGRESS`のままで分岐条件が失敗
+- Webhook Responseノードに到達せず、空のレスポンスが返る
+- クライアント側でタイムアウトエラー
+
+**✅ 正しいパターン** (ポーリングループ):
+```json
+{
+  "nodes": [
+    {"name": "FFmpegレンダラー", "type": "httpRequest"},
+    {"name": "Wait 5 Seconds", "type": "wait"},
+    {"name": "Check Render Status", "type": "httpRequest"},
+    {"name": "Render Completed?", "type": "if"},
+    {"name": "Retry Counter", "type": "set"},
+    {"name": "Check Retry Limit", "type": "if"},
+    {"name": "Wait Before Retry", "type": "wait"},
+    {"name": "Timeout Error Response", "type": "respondToWebhook"}
+  ]
+}
+```
+
+#### ルール2: ポーリングループ設計の必須要素
+
+**4つの核心ノード**:
+
+1. **Retry Counter (Set node)**:
+```javascript
+{
+  "parameters": {
+    "mode": "manual",
+    "assignments": {
+      "assignments": [{
+        "name": "retry_count",
+        "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}",
+        "type": "number"
+      }]
+    }
+  }
+}
+```
+- 役割: 現在のリトライ回数を追跡
+- 初回: `retry_count = 1`
+- 2回目以降: 既存値に+1
+
+2. **Check Retry Limit (IF node)**:
+```javascript
+{
+  "parameters": {
+    "conditions": {
+      "conditions": [{
+        "leftValue": "={{ $json.retry_count }}",
+        "rightValue": 6,
+        "operator": {
+          "type": "number",
+          "operation": "smaller"
+        }
+      }]
+    }
+  }
+}
+```
+- 役割: リトライ上限チェック
+- TRUE分岐: `retry_count < 6` → 再試行
+- FALSE分岐: `retry_count >= 6` → タイムアウトエラー
+
+3. **Wait Before Retry (Wait node)**:
+```javascript
+{
+  "parameters": {
+    "amount": 5,
+    "unit": "seconds"
+  }
+}
+```
+- 役割: リトライ間隔の制御
+- 推奨値: 5秒（APIレート制限を考慮）
+
+4. **Timeout Error Response (Respond to Webhook)**:
+```javascript
+{
+  "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ {
+      success: false,
+      error: 'Rendering timeout after 30 seconds',
+      request_id: $json.request_id,
+      status: $json.status,
+      retry_count: $json.retry_count
+    } }}"
+  }
+}
+```
+- 役割: タイムアウト時のエラーレスポンス
+- 必須情報: エラー内容、request_id、最終ステータス
+
+#### ルール3: 接続構造とループバック
+
+**完全な接続マップ**:
+```javascript
+{
+  "Render Completed?": {
+    "main": [
+      [{"node": "Get Rendered Video"}],     // TRUE: 完了時
+      [{"node": "Retry Counter"}]            // FALSE: 未完了時
+    ]
+  },
+  "Retry Counter": {
+    "main": [[{"node": "Check Retry Limit"}]]
+  },
+  "Check Retry Limit": {
+    "main": [
+      [{"node": "Wait Before Retry"}],       // TRUE: リトライ継続
+      [{"node": "Timeout Error Response"}]   // FALSE: タイムアウト
+    ]
+  },
+  "Wait Before Retry": {
+    "main": [[{"node": "Check Render Status"}]]  // ← ループバック！
+  }
+}
+```
+
+**重要ポイント**:
+- `Wait Before Retry` から `Check Render Status` へのループバック接続が核心
+- これにより5秒ごとに最大6回（30秒）ステータスをチェック
+- 完了まで自動的にリトライし続ける
+
+#### ルール4: タイムアウト設計の計算式
+
+**推奨パラメータ**:
+```
+最大待機時間 = 初回待機 + (リトライ回数 × リトライ間隔)
+例: 5秒 + (5回 × 5秒) = 30秒
+```
+
+**調整ガイドライン**:
+
+| 処理時間 | 初回待機 | リトライ間隔 | 最大リトライ | 合計待機 |
+|---------|---------|------------|------------|----------|
+| **短い** (5-10秒) | 3秒 | 3秒 | 3回 | 12秒 |
+| **標準** (10-20秒) | 5秒 | 5秒 | 5回 | 30秒 |
+| **長い** (20-40秒) | 10秒 | 5秒 | 6回 | 40秒 |
+| **非常に長い** (40-60秒) | 10秒 | 10秒 | 5回 | 60秒 |
+
+**選択基準**:
+- **fal.ai動画レンダリング**: 標準設定（5秒 + 5×5秒 = 30秒）
+- **画像生成**: 短い設定（3秒 + 3×3秒 = 12秒）
+- **大容量動画**: 長い設定（10秒 + 6×5秒 = 40秒）
+
+### 実際のエラー事例と修正
+
+#### 事例1: 空のWebhookレスポンス (WF7-TEST Execution 454)
+
+**症状**:
+- Webhook呼び出し: `POST /webhook/wf7-ffmpeg-test`
+- レスポンス: `200 OK` だが body が空
+- クライアント側でJSON parse error
+
+**原因分析**:
+```javascript
+// Execution 454の詳細
+{
+  "status": "success",
+  "stoppedAt": 6,  // "Render Completed?" で停止
+  "data": {
+    "resultData": {
+      "runData": {
+        "Check Render Status": [{
+          "json": {
+            "status": "IN_PROGRESS",  // ← まだ完了していない
+            "request_id": "...",
+            "queue_position": 0
+          }
+        }]
+      }
+    }
+  }
+}
+```
+
+**問題点**:
+1. 5秒待機では動画レンダリングが完了していない
+2. IF条件: `status === "COMPLETED"` が `false`
+3. FALSE分岐に何も接続されていない
+4. Webhook Responseノードに到達せず
+5. 結果: 空のレスポンス
+
+**修正内容**:
+```javascript
+// FALSE分岐にポーリングループを追加
+{
+  "operations": [
+    {
+      "type": "addNode",
+      "node": {
+        "name": "Retry Counter",
+        "type": "n8n-nodes-base.set",
+        "parameters": {
+          "assignments": {
+            "assignments": [{
+              "name": "retry_count",
+              "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}"
+            }]
+          }
+        }
+      }
+    },
+    // ... 他の3ノードも追加
+    {
+      "type": "addConnection",
+      "source": "Render Completed?",
+      "target": "Retry Counter",
+      "sourceOutput": "main",
+      "targetInput": "main",
+      "sourceIndex": 1  // FALSE分岐
+    }
+    // ... 他の接続も追加
+  ]
+}
+```
+
+**修正結果**:
+- ポーリングループ実装により最大30秒待機
+- レンダリング完了まで自動リトライ
+- 完了時に正しいvideo URLをWebhook Responseで返す
+- タイムアウト時は明示的なエラーレスポンス
+
+#### 事例2: n8n_update_partial_workflowの制限
+
+**試行錯誤の過程**:
+
+**Attempt 1-5**: 接続パラメータエラー
+```javascript
+// ❌ 失敗: "must NOT have additional properties"
+{
+  "type": "addConnection",
+  "source": "Render Completed?",
+  "target": "Retry Counter",
+  "sourceOutput": "main",
+  "sourceIndex": 1
+}
+```
+- エラー: `sourceOutput` と `sourceIndex` の組み合わせが無効
+- 原因: n8n MCP APIの検証ルールが厳格
+
+**Attempt 6**: ノードのみ追加
+```javascript
+// ❌ 失敗: "Disconnected nodes detected"
+{
+  "operations": [
+    {"type": "addNode", "node": {...}},
+    {"type": "addNode", "node": {...}},
+    {"type": "addNode", "node": {...}},
+    {"type": "addNode", "node": {...}}
+  ]
+}
+```
+- エラー: 接続のないノードは保存不可
+- n8n: "Operations were applied but the workflow was NOT saved"
+
+**Solution**: `n8n_update_full_workflow` への切り替え
+```javascript
+// ✅ 成功: 完全なワークフロー更新
+n8n_update_full_workflow({
+  id: "0SI8qdISZ087GEj0",
+  name: "WF7-TEST: FFmpeg Async Polling Test",  // ← 必須パラメータ
+  nodes: [...12 nodes...],     // 8既存 + 4新規
+  connections: {...}           // 完全な接続マップ
+})
+```
+
+**教訓**:
+1. 複雑な接続変更は `n8n_update_full_workflow` を使用
+2. `n8n_update_partial_workflow` はシンプルな更新のみ
+3. `name` パラメータは必須（忘れやすいので注意）
+4. 完全更新は接続整合性が保証される
+
+### ベストプラクティス
+
+#### 1. 非同期API処理時の設計チェックリスト
+
+- [ ] APIが非同期処理か確認（Queue API、Job APIなど）
+- [ ] ステータス遷移パターンを把握
+- [ ] 完了までの標準的な処理時間を測定
+- [ ] ポーリング間隔を決定（推奨: 5秒）
+- [ ] 最大リトライ回数を決定（推奨: 5-6回）
+- [ ] タイムアウト時のエラーハンドリングを実装
+
+#### 2. ポーリングループ実装時の手順
+
+**Step 1**: 基本フローの構築
+```
+Webhook → データ準備 → API呼び出し → 初回待機 → ステータス確認 → IF分岐
+```
+
+**Step 2**: 成功パスの実装
+```
+IF (TRUE) → 結果取得 → Webhook Response
+```
+
+**Step 3**: ポーリングループの追加
+```
+IF (FALSE) → Retry Counter → Retry Limit Check → Wait → (ループバック)
+```
+
+**Step 4**: タイムアウトハンドリング
+```
+Retry Limit (FALSE) → Timeout Error Response
+```
+
+**Step 5**: 接続の完全性確認
+- すべてのIF分岐に接続があるか
+- ループバック接続が正しいノードに戻るか
+- エラーパスがWebhook Responseに到達するか
+
+#### 3. デバッグ手法
+
+**症状: 空のWebhookレスポンス**
+```javascript
+// Step 1: Executionを取得
+n8n_get_execution({
+  id: "executionId",
+  mode: "summary"
+})
+
+// Step 2: どのノードで停止したか確認
+// stoppedAt: 6 → IF nodeで停止
+
+// Step 3: IF nodeの条件評価結果を確認
+// 前ノードのstatusプロパティをチェック
+
+// Step 4: FALSE分岐の接続を確認
+// 接続がない場合はポーリングループを追加
+```
+
+**症状: タイムアウトしても完了しない**
+```javascript
+// 原因候補:
+// 1. Retry Limit設定が高すぎる
+// 2. Wait時間が短すぎる（APIに負荷）
+// 3. ループバック接続が誤っている
+
+// 確認方法:
+// - retry_countの値を各ノードでログ出力
+// - 実際のループ回数をカウント
+// - 合計待機時間を計算
+```
+
+### ワークフロー設計パターン: 非同期処理
+
+#### パターンA: シンプルポーリング（標準）
+```
+API Call → Wait → Status Check → IF (Completed?)
+  ├─ TRUE → Get Result → Response
+  └─ FALSE → Retry Counter → Retry Check → Wait → (loop back to Status Check)
+           └─ Retry Limit → Timeout Error
+```
+- **適用**: 単一の非同期API呼び出し
+- **例**: fal.ai動画レンダリング、画像生成
+
+#### パターンB: 複数ステップポーリング
+```
+Step1 API → Poll Step1 → Step2 API → Poll Step2 → Final Result
+```
+- **適用**: 複数の非同期処理を連鎖
+- **例**: 動画生成 → 音声生成 → 最終合成
+
+#### パターンC: 並列ポーリング
+```
+API Call A → Poll A ─┐
+API Call B → Poll B ─┼→ Wait All → Merge Results → Response
+API Call C → Poll C ─┘
+```
+- **適用**: 複数の独立した非同期処理
+- **例**: 複数動画の同時レンダリング
+
+### 適用例
+
+**WF7-TEST Workflow**:
+- **Before**: 5秒固定待機 → 空のレスポンス（Execution 454失敗）
+- **After**: ポーリングループ（最大30秒） → 正常なレスポンス（テスト待ち）
+- **改善**: 非同期処理対応、タイムアウトハンドリング追加
+- **日付**: 2025-11-06
+
+**次のステップ**:
+- WF7-TEST でのE2Eテスト実行
+- 成功確認後、WF7 Phase4本番環境に適用
+- 他の非同期API（音声生成等）にも同様のパターンを適用
+
+---
+
+## 10. チェックリスト
 
 ### ワークフロー構築時チェックリスト
 

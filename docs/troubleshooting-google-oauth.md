@@ -36,7 +36,7 @@ Error: Client authentication failed (e.g., unknown client, no client authenticat
 
 #### Step 1: リダイレクトURIを確認・追加
 ```
-https://[your-n8n-domain]/rest/oauth2-credential/callback
+https://n8n-python-production-344b.up.railway.app/rest/oauth2-credential/callback
 ```
 
 例（Railway環境）:

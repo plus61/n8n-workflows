@@ -1,0 +1,46 @@
+{
+  "name": "Get Rendered Video - Clean Node",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.response_url + '/result' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "sendBody": false,
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "new-get-rendered-video",
+      "name": "Get Rendered Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fal",
+          "name": "FAL API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "n8n-python-production"
+  },
+  "id": "temp-import",
+  "tags": []
+}

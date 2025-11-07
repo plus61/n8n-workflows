@@ -123,8 +123,8 @@ TASK_U_API_TOKEN=your_task_u_bearer_token
 NOTION_REPORT_DB_ID=abc123def456ghi789
 
 # タスクW/X Webhook
-TASK_W_WEBHOOK_URL=https://your-n8n.com/webhook/task-w
-TASK_X_WEBHOOK_URL=https://your-n8n.com/webhook/task-x
+TASK_W_WEBHOOK_URL=https://n8n-python-production-344b.up.railway.app/webhook/task-w
+TASK_X_WEBHOOK_URL=https://n8n-python-production-344b.up.railway.app/webhook/task-x
 ```
 
 #### 2-2. 環境変数の確認
@@ -503,8 +503,8 @@ Notionレポートの「手動確認が必要な施策」セクション:
 TASK_U_API_URL=https://your-task-u-api.com/api
 TASK_U_API_TOKEN=your_task_u_bearer_token
 NOTION_REPORT_DB_ID=abc123def456ghi789
-TASK_W_WEBHOOK_URL=https://your-n8n.com/webhook/task-w
-TASK_X_WEBHOOK_URL=https://your-n8n.com/webhook/task-x
+TASK_W_WEBHOOK_URL=https://n8n-python-production-344b.up.railway.app/webhook/task-w
+TASK_X_WEBHOOK_URL=https://n8n-python-production-344b.up.railway.app/webhook/task-x
 
 # オプション（将来的に追加）
 GOOGLE_SHEETS_BACKUP_ID=xxx

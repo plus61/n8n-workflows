@@ -42,7 +42,7 @@ LINE → 単一Webhook URL → n8nワークフロー → イベントタイプ�
 
 4. Webhook URL確認
    ```
-   https://your-n8n-instance.com/webhook/line-lead-notion
+   https://n8n-python-production-344b.up.railway.app/webhook/line-lead-notion
    ```
 
 5. Webhook送信を有効化

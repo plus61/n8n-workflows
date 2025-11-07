@@ -23,3 +23,18 @@ node_modules/
 *.tmp
 *.temp
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+test_output/
+
+# Claude/Cursor
+.claude/
+.cursor/
+
+# スクリーンショット（必要に応じて）
+# *.png
+
