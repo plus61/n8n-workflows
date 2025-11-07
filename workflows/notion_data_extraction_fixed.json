@@ -1,0 +1,26 @@
+{
+  "name": "Notion Data Extraction - Fixed",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const notionPage = $input.first().json;\nconst props = notionPage.properties;\n\n// URL型プロパティから直接取得（rich_textではなくurl）\nconst scriptJsonUrl = props['Script JSON']?.url;\nif (!scriptJsonUrl) {\n  throw new Error('Script JSON URL not found in Notion page properties');\n}\n\nconst assetsJsonUrl = props['Assets JSON']?.url;\nif (!assetsJsonUrl) {\n  throw new Error('Assets JSON URL not found in Notion page properties');\n}\n\n// URLからJSONデータを取得（$helpers.httpRequest()を使用）\nconst scriptResponse = await $helpers.httpRequest({\n  method: 'GET',\n  url: scriptJsonUrl,\n  json: false  // テキストとして取得\n});\n\nconst assetsResponse = await $helpers.httpRequest({\n  method: 'GET',\n  url: assetsJsonUrl,\n  json: false  // テキストとして取得\n});\n\nconst scriptJson = scriptResponse;\nconst assetsJson = assetsResponse;\n\n// 既存のパース処理（assetsJsonから driveFileId と assetTag を抽出）\nconst driveFileIdRegex = /\"driveFileId\":\\s*\"([^\"]+)\"/g;\nconst driveFileIds = [];\nlet match;\nwhile ((match = driveFileIdRegex.exec(assetsJson)) !== null) {\n  driveFileIds.push(match[1]);\n}\n\nconst assetTagRegex = /\"assetTag\":\\s*\"([^\"]+)\"/g;\nconst assetTags = [];\nwhile ((match = assetTagRegex.exec(assetsJson)) !== null) {\n  assetTags.push(match[1]);\n}\n\nconst assetsArray = driveFileIds.map((id, idx) => ({\n  driveFileId: id,\n  assetTag: assetTags[idx] || `asset${idx}`,\n  assetIndex: idx\n}));\n\n// Article IDもURL型プロパティの可能性があるため、rich_textとurlの両方を試す\nconst articleId = props['Article ID']?.rich_text?.[0]?.text?.content\n  || props['Article ID']?.url\n  || notionPage.id;\n\nreturn {\n  json: {\n    notionPageId: notionPage.id,\n    articleId,\n    scriptData: JSON.parse(scriptJson),\n    assetsData: assetsArray\n  }\n};"
+      },
+      "id": "notion-data-extraction-fixed",
+      "name": "Notionデータ抽出 (Fixed)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "n8n-python-production"
+  },
+  "id": "notion-data-extraction-fixed",
+  "tags": []
+}
