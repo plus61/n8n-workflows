@@ -1,0 +1,16 @@
+{
+  "assets": [
+    {
+      "driveFileId": "1_test_drive_file_id_1",
+      "assetTag": "intro_image"
+    },
+    {
+      "driveFileId": "1_test_drive_file_id_2",
+      "assetTag": "main_image"
+    },
+    {
+      "driveFileId": "1_test_drive_file_id_3",
+      "assetTag": "outro_image"
+    }
+  ]
+}

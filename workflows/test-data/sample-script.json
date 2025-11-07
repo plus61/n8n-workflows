@@ -1,0 +1,16 @@
+{
+  "segments": [
+    {
+      "duration": 5,
+      "text": "First segment - 5 seconds"
+    },
+    {
+      "duration": 5,
+      "text": "Second segment - 5 seconds"
+    },
+    {
+      "duration": 5,
+      "text": "Third segment - 5 seconds"
+    }
+  ]
+}
