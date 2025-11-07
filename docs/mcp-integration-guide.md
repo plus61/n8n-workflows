@@ -354,7 +354,7 @@ mcp__n8n-mcp__n8n_create_workflow({
 ```
 
 **結果**:
-- Webhook URL: `https://your-n8n.com/webhook/api/hello`
+- Webhook URL: `https://n8n-python-production-344b.up.railway.app/webhook/api/hello`
 - レスポンス例: `{"message": "Hello World", "timestamp": "2025-10-26T..."}`
 
 ### 例2: Slack通知ワークフロー
@@ -433,7 +433,7 @@ mcp__n8n-mcp__n8n_update_partial_workflow({
 **原因**: n8n MCP の `activate` operationは存在しない
 
 **解決策**:
-- n8n WebUI で手動アクティブ化: `https://your-n8n.com/workflow/{workflow-id}`
+- n8n WebUI で手動アクティブ化: `https://n8n-python-production-344b.up.railway.app/workflow/{workflow-id}`
 - または、n8n APIを直接呼び出し(curlやaxios)
 
 #### 2. ノードバリデーションエラー
@@ -488,7 +488,7 @@ mcp__n8n-mcp__n8n_diagnostic({verbose: true})
 
 ```bash
 # Webhookテスト例
-curl -X GET "https://your-n8n.com/webhook/api/hello"
+curl -X GET "https://n8n-python-production-344b.up.railway.app/webhook/api/hello"
 ```
 
 ---
