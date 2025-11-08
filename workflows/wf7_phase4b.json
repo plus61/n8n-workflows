@@ -1,0 +1,488 @@
+{
+  "name": "WF7 Phase4b - Image to Video",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4b-image-to-video",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-phase4b-start",
+      "name": "Webhook - Phase 4b Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "wf7-phase4b-start",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nif (!input.script_id) {\n  throw new Error('script_id is required');\n}\n\nif (!input.slides_metadata || input.slides_metadata.length !== 7) {\n  throw new Error('slides_metadata must contain exactly 7 items');\n}\n\n// 各スライドの必須フィールド確認\nfor (const slide of input.slides_metadata) {\n  if (!slide.image_url) throw new Error(`Missing image_url for ${slide.section}`);\n  if (!slide.duration) throw new Error(`Missing duration for ${slide.section}`);\n  if (!slide.motion_prompt) throw new Error(`Missing motion_prompt for ${slide.section}`);\n}\n\nreturn input;"
+      },
+      "id": "validate-input-node",
+      "name": "Code - Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "slides_metadata",
+        "options": {}
+      },
+      "id": "split-slides-node",
+      "name": "Split Out - Slides",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 現在処理中のスライド\nconst slide = $input.first().json;\nconst scriptId = $('Code - Validate Input').item.json.script_id;\n\n// FAL Compose APIペイロード構築\nconst payload = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: [\n        {\n          url: slide.image_url,\n          timestamp: 0,\n          duration: slide.duration\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    fal_payload: JSON.stringify(payload),\n    slide_metadata: slide,\n    script_id: scriptId,\n    slide_index: $itemIndex\n  }\n};"
+      },
+      "id": "prepare-fal-payload-node",
+      "name": "Code - Prepare FAL Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fal_payload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "submit-to-fal-node",
+      "name": "HTTP Request - Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-5s-node",
+      "name": "Wait - 5 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1340, 300],
+      "webhookId": "phase4b-wait-5s"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('HTTP Request - Submit to FAL').item.json.status_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "check-status-node",
+      "name": "HTTP Request - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "render-complete-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "render-completed-if-node",
+      "name": "IF - Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-result-node",
+      "name": "HTTP Request - Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resultData = $input.first().json;\nconst slideData = $('Code - Prepare FAL Payload').item.json.slide_metadata;\nconst requestId = $('HTTP Request - Submit to FAL').item.json.request_id;\nconst slideIndex = $('Code - Prepare FAL Payload').item.json.slide_index;\n\n// video_url抽出\nconst videoUrl = resultData.output?.video_url \n  || resultData.video_url \n  || resultData.result?.video_url;\n\nif (!videoUrl) {\n  throw new Error('Video URL not found in FAL API response');\n}\n\n// videos_metadataオブジェクト構築\nreturn {\n  json: {\n    section: slideData.section,\n    duration: slideData.duration,\n    video_url: videoUrl,\n    fal_request_id: requestId,\n    motion_prompt: slideData.motion_prompt,\n    filename: `video_${slideIndex + 1}_${slideData.section}.mp4`,\n    text: slideData.text,\n    slide_index: slideIndex\n  }\n};"
+      },
+      "id": "build-video-metadata-node",
+      "name": "Code - Build Video Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "retry-count",
+              "name": "retry_count",
+              "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "status-url",
+              "name": "status_url",
+              "value": "={{ $json.status_url }}",
+              "type": "string"
+            },
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "slide-metadata",
+              "name": "slide_metadata",
+              "value": "={{ $('Code - Prepare FAL Payload').item.json.slide_metadata }}",
+              "type": "object"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.response_url }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "retry-counter-node",
+      "name": "Set - Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-retry-limit",
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ]
+        }
+      },
+      "id": "check-retry-limit-node",
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2220, 400]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-before-retry-node",
+      "name": "Wait - Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2440, 300],
+      "webhookId": "phase4b-retry-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "const slide = $input.first().json.slide_metadata;\nconst retryCount = $input.first().json.retry_count;\n\nreturn {\n  json: {\n    success: false,\n    error: `Rendering timeout for ${slide.section} after ${retryCount} retries`,\n    section: slide.section,\n    retry_count: retryCount\n  }\n};"
+      },
+      "id": "timeout-error-node",
+      "name": "Code - Timeout Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst scriptId = $('Code - Validate Input').item.json.script_id;\n\n// videos_metadata配列を構築（sectionの順序でソート）\nconst sectionOrder = ['hook', 'intro', 'point1', 'point2', 'point3', 'summary', 'cta'];\n\nconst videosMetadata = allItems\n  .map(item => item.json)\n  .sort((a, b) => {\n    return sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section);\n  });\n\nreturn {\n  json: {\n    success: true,\n    script_id: scriptId,\n    videos_metadata: videosMetadata,\n    videos_count: videosMetadata.length,\n    total_duration: videosMetadata.reduce((sum, v) => sum + v.duration, 0)\n  }\n};"
+      },
+      "id": "build-final-response-node",
+      "name": "Code - Build Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook-node",
+      "name": "Respond to Webhook - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2880, 200]
+    }
+  ],
+  "connections": {
+    "Webhook - Phase 4b Start": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Split Out - Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out - Slides": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare FAL Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare FAL Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait - 5 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - 5 Seconds": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Get Result": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Video Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Video Metadata": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "IF - Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Wait - Before Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Timeout Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Before Retry": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Final Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-08T06:00:00.000Z",
+  "versionId": "phase4b-v1-0"
+}
