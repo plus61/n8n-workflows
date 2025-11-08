@@ -1,0 +1,17 @@
+{
+  "assets": [
+    {
+      "driveFileId": "1t3BFRFgHMLYhmfp9BobiNhdK3DlUhUaC",
+      "assetTag": "test_asset_1"
+    },
+    {
+      "driveFileId": "1qyNTS3pX21H_EM6myRt9cvMBM5G1RDf7",
+      "assetTag": "test_asset_2"
+    },
+    {
+      "driveFileId": "1d4PlR2_JcXvLXVB38jyU5zdzbAE-KgQd",
+      "assetTag": "test_asset_3"
+    }
+  ]
+}
+

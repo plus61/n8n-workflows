@@ -1,0 +1,186 @@
+{
+  "name": "Test Phase4c FFmpeg Concat",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-test",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign1",
+              "name": "script_id",
+              "value": "test-script-phase4c-001",
+              "type": "string"
+            },
+            {
+              "id": "assign2",
+              "name": "articleId",
+              "value": "test-article-001",
+              "type": "string"
+            },
+            {
+              "id": "assign3",
+              "name": "videos_metadata",
+              "value": "={{ [{\"section\":\"hook\",\"duration\":3,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"intro\",\"duration\":10,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"point1\",\"duration\":13,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"point2\",\"duration\":13,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"point3\",\"duration\":14,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"summary\",\"duration\":20,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"cta\",\"duration\":7,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"}] }}",
+              "type": "array"
+            },
+            {
+              "id": "assign4",
+              "name": "videos_count",
+              "value": 7,
+              "type": "number"
+            },
+            {
+              "id": "assign5",
+              "name": "total_duration",
+              "value": 80,
+              "type": "number"
+            },
+            {
+              "id": "assign6",
+              "name": "success",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-test-data",
+      "name": "Set - Test Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import subprocess\nimport os\nimport tempfile\nimport time\nimport urllib.request\n\ndef download_video(video_url, output_path):\n    try:\n        if \"drive.google.com\" in video_url:\n            if \"/file/d/\" in video_url:\n                file_id = video_url.split(\"/file/d/\")[1].split(\"/\")[0]\n                video_url = f\"https://drive.google.com/uc?export=download&id={file_id}\"\n        \n        # urllib.requestを使用して動画をダウンロード\n        req = urllib.request.Request(\n            video_url,\n            headers={'User-Agent': 'Mozilla/5.0'}\n        )\n        \n        with urllib.request.urlopen(req, timeout=60) as response:\n            with open(output_path, 'wb') as out_file:\n                out_file.write(response.read())\n        \n        if os.path.exists(output_path):\n            file_size = os.path.getsize(output_path)\n            if file_size > 0:\n                return True\n        return False\n    except Exception as e:\n        print(f\"Download error for {video_url}: {str(e)}\")\n        return False\n\ndef create_concat_file(video_paths, concat_file_path):\n    with open(concat_file_path, 'w', encoding='utf-8') as f:\n        for video_path in video_paths:\n            f.write(f\"file '{video_path}'\\n\")\n\ndef concat_videos_with_ffmpeg(video_paths, output_path, timeout=600):\n    try:\n        concat_file = os.path.join(os.path.dirname(output_path), 'concat.txt')\n        create_concat_file(video_paths, concat_file)\n        cmd = [\n            'ffmpeg',\n            '-y',\n            '-safe', '0',\n            '-f', 'concat',\n            '-i', concat_file,\n            '-c', 'copy',\n            output_path\n        ]\n        result = subprocess.run(\n            cmd,\n            capture_output=True,\n            text=True,\n            timeout=timeout\n        )\n        if result.returncode == 0 and os.path.exists(output_path):\n            if os.path.exists(concat_file):\n                os.remove(concat_file)\n            return True\n        return False\n    except Exception as e:\n        return False\n\ninput_data = items[0]['json']\nscript_id = input_data.get('script_id', 'unknown')\nvideos_metadata = input_data.get('videos_metadata', [])\n\nif len(videos_metadata) != 7:\n    raise ValueError(f\"動画数が不正です。期待: 7本、実際: {len(videos_metadata)}本\")\n\ntemp_dir = tempfile.mkdtemp(prefix='wf7_phase4c_')\ndownloaded_paths = []\n\nfor i, video_meta in enumerate(videos_metadata, 1):\n    section = video_meta.get('section', f'video_{i}')\n    video_url = video_meta.get('video_url')\n    if not video_url:\n        raise ValueError(f\"動画URL未設定: section={section}\")\n    video_filename = f\"video_{i}_{section}.mp4\"\n    video_path = os.path.join(temp_dir, video_filename)\n    if not download_video(video_url, video_path):\n        raise RuntimeError(f\"動画ダウンロード失敗: {section}\")\n    downloaded_paths.append(video_path)\n\noutput_filename = f\"final_video_{script_id}_{int(time.time())}.mp4\"\noutput_path = os.path.join(temp_dir, output_filename)\n\nif not concat_videos_with_ffmpeg(downloaded_paths, output_path):\n    raise RuntimeError(\"FFmpeg結合失敗\")\n\noutput_size = os.path.getsize(output_path)\ntotal_duration = sum(v.get('duration', 0) for v in videos_metadata)\n\nreturn [{\n    'json': {\n        'success': True,\n        'script_id': script_id,\n        'output_video_path': output_path,\n        'output_video_size': output_size,\n        'total_duration': total_duration,\n        'videos_count': len(videos_metadata),\n        'temp_dir': temp_dir,\n        'articleId': input_data.get('articleId')\n    }\n}]"
+      },
+      "id": "code-phase4c-ffmpeg-concat",
+      "name": "Code - Phase4c FFmpeg Concat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "result-success",
+              "name": "result",
+              "value": "SUCCESS: Video concatenation completed!",
+              "type": "string"
+            },
+            {
+              "id": "result-script-id",
+              "name": "script_id",
+              "value": "={{ $json.script_id }}",
+              "type": "string"
+            },
+            {
+              "id": "result-video-path",
+              "name": "output_video_path",
+              "value": "={{ $json.output_video_path }}",
+              "type": "string"
+            },
+            {
+              "id": "result-video-size",
+              "name": "output_video_size_mb",
+              "value": "={{ Math.round($json.output_video_size / 1024 / 1024 * 100) / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "result-total-duration",
+              "name": "total_duration",
+              "value": "={{ $json.total_duration }}",
+              "type": "number"
+            },
+            {
+              "id": "result-videos-count",
+              "name": "videos_count",
+              "value": "={{ $json.videos_count }}",
+              "type": "number"
+            },
+            {
+              "id": "result-temp-dir",
+              "name": "temp_dir",
+              "value": "={{ $json.temp_dir }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "display-result",
+      "name": "Display Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Test Data": {
+      "main": [
+        [
+          {
+            "node": "Code - Phase4c FFmpeg Concat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Phase4c FFmpeg Concat": {
+      "main": [
+        [
+          {
+            "node": "Display Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "",
+  "triggerCount": 0,
+  "tags": []
+}

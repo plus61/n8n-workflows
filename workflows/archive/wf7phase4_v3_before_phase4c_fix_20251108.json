@@ -1,0 +1,43 @@
+{
+  "success": true,
+  "data": {
+    "updatedAt": "2025-11-08T15:09:45.364Z",
+    "createdAt": "2025-11-08T05:38:42.432Z",
+    "id": "qSN7EHj5yl0nPXij",
+    "name": "WF7 Phase4 - V3 Fixed",
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "wf7-video-script",
+          "responseMode": "responseNode",
+          "options": {
+            "allowedOrigins": "https://n8n-python-production-344b.up.railway.app",
+            "rawBody": true
+          }
+        },
+        "id": "37596919-cb83-4915-be72-955ef0775884",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -4272,
+          -544
+        ],
+        "webhookId": "wf7-phase4-video-render",
+        "onError": "continueRegularOutput"
+      }
+    ],
+    "connections": {},
+    "settings": {},
+    "staticData": null,
+    "meta": null,
+    "pinData": {},
+    "versionId": "c039a3b1-475d-42e1-b0ee-fff72f21abb4",
+    "versionCounter": 66,
+    "triggerCount": 1
+  }
+}
+

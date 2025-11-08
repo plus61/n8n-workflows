@@ -1,0 +1,1809 @@
+{
+  "name": "WF7 Phase4 - V3 Fixed_final",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-video-script",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://n8n-python-production-344b.up.railway.app",
+          "rawBody": true
+        }
+      },
+      "id": "332f4e3b-b590-4252-a468-71068718449b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3120,
+        -512
+      ],
+      "webhookId": "wf7-phase4-video-render",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "webhook_response",
+              "name": "notionPageId",
+              "value": "={{ $json.body.notionPageId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ae22589b-adb3-45e5-ad18-a3597f02c9de",
+      "name": "Webhookデータ抽出",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2896,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ \"https://api.notion.com/v1/pages/\" + $json.notionPageId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a2eb34a6-f507-4113-a592-2af7b066ba69",
+      "name": "Notion API呼び出し",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2672,
+        -512
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const notionPage = $input.first().json;\nconst props = notionPage.properties;\n\n// URL型プロパティまたはrich_text型プロパティから取得を試みる\n// 1. Script JSON: URL型プロパティ → Script URL → rich_text型プロパティの順で試す\nlet scriptJsonUrl = props['Script JSON']?.url\n  || props['Script URL']?.url\n  || null;\n\nlet scriptJsonText = null;\nif (!scriptJsonUrl) {\n  // rich_text型から直接取得\n  const scriptJsonRichText = props['Script JSON']?.rich_text?.[0]?.text?.content;\n  if (scriptJsonRichText) {\n    scriptJsonText = scriptJsonRichText;\n  } else {\n    throw new Error('Script JSON not found in Notion page properties (tried: Script JSON.url, Script URL.url, Script JSON.rich_text)');\n  }\n}\n\n// 2. Assets JSON: URL型プロパティ → Assets URL → rich_text型プロパティの順で試す\nlet assetsJsonUrl = props['Assets JSON']?.url\n  || props['Assets URL']?.url\n  || null;\n\nlet assetsJsonText = null;\nif (!assetsJsonUrl) {\n  // rich_text型から直接取得\n  const assetsJsonRichText = props['Assets JSON']?.rich_text?.[0]?.text?.content;\n  if (assetsJsonRichText) {\n    assetsJsonText = assetsJsonRichText;\n  } else {\n    throw new Error('Assets JSON not found in Notion page properties (tried: Assets JSON.url, Assets URL.url, Assets JSON.rich_text)');\n  }\n}\n\n// Article ID取得\nconst articleId = props['Article ID']?.rich_text?.[0]?.text?.content\n  || props['Article ID']?.url\n  || notionPage.id;\n\n// URLがある場合はURLを返し、rich_textから直接取得した場合はテキストを返す\nif (scriptJsonUrl && assetsJsonUrl) {\n  // 両方URL型の場合\n  return {\n    json: {\n      notionPageId: notionPage.id,\n      articleId,\n      scriptJsonUrl,\n      assetsJsonUrl,\n      useUrl: true\n    }\n  };\n} else if (scriptJsonText && assetsJsonText) {\n  // 両方rich_text型の場合\n  return {\n    json: {\n      notionPageId: notionPage.id,\n      articleId,\n      scriptJsonText,\n      assetsJsonText,\n      useUrl: false\n    }\n  };\n} else {\n  throw new Error('Mixed data types: Script JSON and Assets JSON must both be URL or both be rich_text');\n}"
+      },
+      "id": "f03e9bba-11ce-446d-a0fa-336e44e6b7cf",
+      "name": "URL抽出",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2448,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-useurl",
+              "leftValue": "={{ $json.useUrl }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f0989240-808d-4668-959a-b72dd94bc7b3",
+      "name": "URL型チェック",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2224,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.scriptJsonUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "b866fe4a-8ff5-48d7-a6af-1e50819245a0",
+      "name": "Script JSON取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2000,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('URL抽出').item.json.assetsJsonUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "03d53eca-321d-417e-8094-5ffaf0da7241",
+      "name": "Assets JSON取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1776,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const urlExtractNode = $('URL抽出').item.json;\n\n// URL型またはrich_text型のどちらからでもデータを取得\nlet scriptJsonText;\nlet assetsJsonText;\n\nif (urlExtractNode.useUrl === false) {\n  // rich_text型から直接取得した場合\n  scriptJsonText = urlExtractNode.scriptJsonText;\n  assetsJsonText = urlExtractNode.assetsJsonText;\n} else {\n  // URL型からHTTP Requestで取得した場合\n  scriptJsonText = $('Script JSON取得').item.json.data;\n  assetsJsonText = $('Assets JSON取得').item.json.data;\n}\n\n// assetsJsonから driveFileId と assetTag を抽出\nconst driveFileIdRegex = /\"driveFileId\":\\s*\"([^\"]+)\"/g;\nconst driveFileIds = [];\nlet match;\nwhile ((match = driveFileIdRegex.exec(assetsJsonText)) !== null) {\n  driveFileIds.push(match[1]);\n}\n\nconst assetTagRegex = /\"assetTag\":\\s*\"([^\"]+)\"/g;\nconst assetTags = [];\nwhile ((match = assetTagRegex.exec(assetsJsonText)) !== null) {\n  assetTags.push(match[1]);\n}\n\nconst assetsArray = driveFileIds.map((id, idx) => ({\n  driveFileId: id,\n  assetTag: assetTags[idx] || `asset${idx}`,\n  assetIndex: idx\n}));\n\nreturn {\n  json: {\n    notionPageId: urlExtractNode.notionPageId,\n    articleId: urlExtractNode.articleId,\n    scriptData: JSON.parse(scriptJsonText),\n    assetsData: assetsArray\n  }\n};"
+      },
+      "id": "727469ca-1677-4ad8-92da-d4df18d4b5c3",
+      "name": "データ統合",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1552,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4a-slide-generator",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"script_id\": $('データ統合').item.json.notionPageId } }}",
+        "options": {}
+      },
+      "id": "1648d4e6-0b66-4052-8a13-9194cca684a2",
+      "name": "HTTP Request - Call Phase4a",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -432,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign1",
+              "name": "script_id",
+              "value": "={{ $json.script_id }}",
+              "type": "string"
+            },
+            {
+              "id": "assign2",
+              "name": "articleId",
+              "value": "={{ $json.articleId }}",
+              "type": "string"
+            },
+            {
+              "id": "assign3",
+              "name": "slides_metadata",
+              "value": "={{ $json.slides_metadata }}",
+              "type": "array"
+            },
+            {
+              "id": "assign4",
+              "name": "slides_count",
+              "value": "={{ $json.slides_metadata ? $json.slides_metadata.length : 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "assign5",
+              "name": "phase4a_success",
+              "value": "={{ $json.success }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b5032e78-17de-4107-8736-6a24830a1b6a",
+      "name": "Set - Phase4a Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -208,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.phase4a_success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.slides_count }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "056a78cf-62f2-4ae1-9c62-7accef6720e7",
+      "name": "IF - Phase4a Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        32,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4b-image-to-video",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"script_id\": $('Set - Phase4a Payload New').item.json.script_id,\n  \"slides_metadata\": $('Set - Phase4a Payload New').item.json.slides_metadata\n} }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "729c6f85-ff57-43f5-bd20-f686281e14c7",
+      "name": "HTTP Request - Call Phase4b",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        256,
+        -416
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign1",
+              "name": "script_id",
+              "value": "={{ $json.script_id }}",
+              "type": "string"
+            },
+            {
+              "id": "assign2",
+              "name": "articleId",
+              "value": "={{ $json.articleId || $('Set - Phase4a Payload New').item.json.articleId }}",
+              "type": "string"
+            },
+            {
+              "id": "assign3",
+              "name": "videos_metadata",
+              "value": "={{ $json.videos_metadata }}",
+              "type": "array"
+            },
+            {
+              "id": "assign4",
+              "name": "videos_count",
+              "value": "={{ $json.videos_count }}",
+              "type": "number"
+            },
+            {
+              "id": "assign5",
+              "name": "total_duration",
+              "value": "={{ $json.total_duration }}",
+              "type": "number"
+            },
+            {
+              "id": "assign6",
+              "name": "phase4b_success",
+              "value": "={{ $json.success }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7481ecd8-aa7f-4afc-9dc3-4669e1f1a92f",
+      "name": "Set - Phase4b Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        -416
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.phase4b_success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.videos_count }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "116d065c-1ebe-40b0-862a-2521c34495ad",
+      "name": "IF - Phase4b Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        -416
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ \"https://api.notion.com/v1/pages/\" + $('Set - Phase4a Payload New').item.json.script_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"status\": {\n      \"status\": {\n        \"name\": \"Phase4bエラー\"\n      }\n    },\n    \"errorMessage\": {\n      \"rich_text\": [\n        {\n          \"text\": {\n            \"content\": \"Phase4b呼び出しに失敗しました\"\n          }\n        }\n      ]\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "aa7dcdb8-8cca-491b-b3f5-bb92d0a77f51",
+      "name": "エラー時Notion更新(Phase4b)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        928,
+        -512
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, error: \"Phase4b processing failed\" } }}",
+        "options": {}
+      },
+      "id": "e5c81cdf-24be-4998-8408-fc4553ed4717",
+      "name": "エラー時Webhook応答(Phase4b)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1152,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "slides_metadata",
+        "options": {}
+      },
+      "id": "19d7cb7a-2597-41a1-b6e7-fa61994a5ad4",
+      "name": "Split Out",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.driveFileId }}?fields=id,name,webContentLink,webViewLink",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {}
+      },
+      "id": "1891c927-174e-4ca5-8c7a-9f667a89e1d1",
+      "name": "Driveファイル情報取得",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1104,
+        48
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "slide_number",
+              "name": "slideNumber",
+              "value": "={{ $json.slideNumber }}",
+              "type": "number"
+            },
+            {
+              "id": "slide_text",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "slide_image_url",
+              "name": "imageUrl",
+              "value": "={{ $json.imageUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "slide_duration",
+              "name": "duration",
+              "value": "={{ $json.duration }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8998c72d-0fd1-4c79-8ea3-7744e4ef49e9",
+      "name": "メタデータ整形",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -880,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// FAL API /compose エンドポイント用にペイロード構築\n  const scriptData = $('データ統合').item.json.scriptData;\n  const metadataItems = $input.all();\n  const articleId = $('データ統合').item.json.articleId;\n\n  // scriptDataのsegmentsからduration情報を取得\n  const segments = scriptData.segments || [];\n\n  // 各アセットからkeyframesを構築(timestampとdurationを追加)\n  let cumulativeTime = 0;\n  const keyframes = metadataItems.map((metaItem, index) => {\n    const driveFileId = metaItem.json.driveFileId;\n    const imageUrl = `https://drive.google.com/uc?export=download&id=${driveFileId}`;\n\n    // 対応するセグメントのdurationを取得(デフォルトは5秒)\n    const duration = segments[index]?.duration || 5;\n    const timestamp = cumulativeTime;\n\n    // 次のタイムスタンプ用に累積時間を更新\n    cumulativeTime += duration;\n\n    // FAL API /compose 形式: url, timestamp, duration\n    return {\n      url: imageUrl,\n      timestamp: timestamp,\n      duration: duration\n    };\n  });\n\n  // FAL API /compose が期待するJSON構造\n  const videoJson = {\n    tracks: [\n      {\n        id: \"1\",\n        type: \"video\",\n        keyframes: keyframes\n      }\n    ]\n  };\n\n  return {\n    json: {\n      json_string: JSON.stringify(videoJson),\n      articleId: articleId\n    }\n  };"
+      },
+      "id": "1500f515-04c4-4efd-b0cb-5081635db7cc",
+      "name": "ペイロード構築",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.json_string }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "069282ba-d8e0-463a-a1f1-dbf626b4485d",
+      "name": "Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -432,
+        48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://queue.fal.run/fal-ai/ffmpeg-api/requests/' + $json.request_id + '/status' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "081b8b89-2b5b-4020-b50e-3bb508651c25",
+      "name": "Fetch Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -208,
+        48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "639b78a4-6a86-4781-9381-e5e2eda67bf9",
+      "name": "Wait for Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        -32
+      ],
+      "webhookId": "0d448de1-3046-4f2d-9d2d-b411a8891a4a"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.status_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $vars.FAL_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "a8ce9468-898c-4f6f-886d-e822b25c0e3e",
+      "name": "Check Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        256,
+        -32
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "render-complete-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "20936faf-38dc-4408-83c4-2c7b5dac6ad3",
+      "name": "Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.response_url || 'https://queue.fal.run/fal-ai/ffmpeg-api/requests/' + $json.request_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "acddc409-c262-427d-8556-3effd0ea9203",
+      "name": "Get Image Result URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        704,
+        -128
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.images && $json.images[0] ? $json.images[0].url : ($json.video_url || $json.url) }}",
+        "options": {}
+      },
+      "id": "cf86ce94-8aed-4b1a-a1da-de149418f594",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        928,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "multipart/related; boundary=foo_bar_baz"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({name: $('データ統合').item.json.articleId + '_final.mp4', mimeType: 'video/mp4'}) }}"
+            },
+            {
+              "name": "file",
+              "value": "={{ $json.video_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6d42d0e7-fddc-46c7-80d0-680910ccf67b",
+      "name": "DriveへUL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1152,
+        -128
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pass-notion-page-id",
+              "name": "notionPageId",
+              "value": "={{ $('データ統合').item.json.notionPageId }}",
+              "type": "string"
+            },
+            {
+              "id": "pass-video-url",
+              "name": "videoUrl",
+              "value": "={{ $json.webViewLink || 'https://drive.google.com/file/d/' + $json.id + '/view' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f4ea62cd-1dc6-4e64-a502-fd4fa0326343",
+      "name": "レスポンスデータ準備",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1376,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.notionPageId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  properties: {\n    Status: { select: { name: 'VideoReady' } },\n    'Video URL': { url: $json.videoUrl }\n  }\n} }}",
+        "options": {}
+      },
+      "id": "d328d011-e843-4133-a2ca-4bfc8b969aaa",
+      "name": "Notion更新",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        -128
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "restore-notion-page-id",
+              "name": "notionPageId",
+              "value": "={{ $('レスポンスデータ準備').item.json.notionPageId }}",
+              "type": "string"
+            },
+            {
+              "id": "restore-video-url",
+              "name": "videoUrl",
+              "value": "={{ $('レスポンスデータ準備').item.json.videoUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1c6044c6-704c-4edf-b190-f27b435a2e15",
+      "name": "レスポンスデータ復元",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1824,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, script_id: $('Code - Phase4c FFmpeg Concat').item.json.script_id, final_video_url: $('Google Drive - Upload Final Video').item.json.webViewLink, video_size_mb: Math.round($('Code - Phase4c FFmpeg Concat').item.json.output_video_size / 1024 / 1024 * 100) / 100, total_duration: $('Code - Phase4c FFmpeg Concat').item.json.total_duration, notion_updated: true } }}",
+        "options": {}
+      },
+      "id": "37815f11-03bd-44d3-aaec-841f00f8005a",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2048,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "increment-retry-count",
+              "name": "retry_count",
+              "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "pass-status-url",
+              "name": "status_url",
+              "value": "={{ $json.status_url }}",
+              "type": "string"
+            },
+            {
+              "id": "pass-request-id",
+              "name": "request_id",
+              "value": "={{ $json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "pass-status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "pass-response-url",
+              "name": "response_url",
+              "value": "={{ $json.response_url || 'https://queue.fal.run/fal-ai/ffmpeg-api/requests/' + $json.request_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0ffba8b2-2ea9-4f62-b7bd-e8259482eb2b",
+      "name": "Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        704,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-retry-limit",
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 20,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "86455a3f-0c87-4df4-8321-8f5fbc4f70b2",
+      "name": "Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        928,
+        160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "91681dbe-9865-4184-bd96-dbfb6bcdc6e5",
+      "name": "Wait Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1152,
+        144
+      ],
+      "webhookId": "6fd7287d-d2f1-4967-a6c9-4508637c6ca1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: false,\n  error: 'Rendering timeout after 30 seconds',\n  request_id: $json.request_id,\n  status: $json.status,\n  retry_count: $json.retry_count\n} }}",
+        "options": {}
+      },
+      "id": "f8b8198e-e991-40a9-b70a-26ffa03c9bdd",
+      "name": "Timeout Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1152,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ \"https://api.notion.com/v1/pages/\" + $('データ統合').first().json.notionPageId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"status\": {\n      \"status\": {\n        \"name\": \"Phase4aエラー\"\n      }\n    },\n    \"errorMessage\": {\n      \"rich_text\": [\n        {\n          \"text\": {\n            \"content\": \"Phase4a呼び出しに失敗しました\"\n          }\n        }\n      ]\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "5abe1f8c-82cd-4df5-9b85-a78066e4d961",
+      "name": "エラー時Notion更新",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        256,
+        -608
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, error: \"Phase4a processing failed\" } }}",
+        "options": {}
+      },
+      "id": "e468f438-f7d5-4974-993c-044c46b1958b",
+      "name": "エラー時Webhook応答",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        -608
+      ]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "import os\nimport tempfile\nimport time\nimport subprocess\nimport shutil\n\ndef download_video(video_url, output_path):\n    try:\n        # Google Drive URLの変換\n        if \"drive.google.com\" in video_url:\n            if \"/file/d/\" in video_url:\n                file_id = video_url.split(\"/file/d/\")[1].split(\"/\")[0]\n                video_url = f\"https://drive.google.com/uc?export=download&id={file_id}\"\n        \n        # 出力ディレクトリが存在することを確認\n        output_dir = os.path.dirname(output_path)\n        if not os.path.exists(output_dir):\n            os.makedirs(output_dir, exist_ok=True)\n        \n        # curlコマンドが利用可能か確認\n        curl_path = shutil.which('curl')\n        if not curl_path:\n            raise RuntimeError(f\"curlコマンドが見つかりません。システムPATHを確認してください。\")\n        \n        # curlを使用してダウンロード\n        try:\n            cmd = [curl_path, '-L', '--fail', '--silent', '--show-error', '-o', output_path, video_url]\n            result = subprocess.run(\n                cmd,\n                capture_output=True,\n                text=True,\n                timeout=120\n            )\n            \n            # curlのエラーを確認\n            if result.returncode != 0:\n                error_msg = f\"curl失敗: returncode={result.returncode}\"\n                if result.stderr:\n                    error_msg += f\", stderr={result.stderr[:500]}\"\n                if result.stdout:\n                    error_msg += f\", stdout={result.stdout[:500]}\"\n                raise RuntimeError(f\"{error_msg}, url={video_url}\")\n            \n            # ファイルの存在とサイズを確認\n            if not os.path.exists(output_path):\n                raise RuntimeError(f\"ファイルが作成されませんでした: {output_path}, url={video_url}\")\n            \n            file_size = os.path.getsize(output_path)\n            if file_size == 0:\n                raise RuntimeError(f\"ファイルサイズが0: {output_path}, url={video_url}\")\n            \n            return True\n                \n        except subprocess.TimeoutExpired:\n            raise RuntimeError(f\"ダウンロードタイムアウト（120秒経過）: {video_url}\")\n        except FileNotFoundError:\n            raise RuntimeError(f\"curlコマンドが見つかりません: {curl_path}\")\n        except Exception as e:\n            raise RuntimeError(f\"curl実行エラー: {str(e)}, url={video_url}\")\n            \n    except Exception as e:\n        # エラーを再発生させて、詳細なメッセージを含める\n        raise RuntimeError(f\"動画ダウンロード失敗: {str(e)}\")\n\ndef create_concat_file(video_paths, concat_file_path):\n    with open(concat_file_path, 'w', encoding='utf-8') as f:\n        for video_path in video_paths:\n            f.write(f\"file '{video_path}'\\n\")\n\ndef concat_videos_with_ffmpeg(video_paths, output_path, timeout=600):\n    try:\n        concat_file = os.path.join(os.path.dirname(output_path), 'concat.txt')\n        create_concat_file(video_paths, concat_file)\n        cmd = [\n            'ffmpeg',\n            '-y',\n            '-safe', '0',\n            '-f', 'concat',\n            '-i', concat_file,\n            '-c', 'copy',\n            output_path\n        ]\n        result = subprocess.run(\n            cmd,\n            capture_output=True,\n            text=True,\n            timeout=timeout\n        )\n        if result.returncode == 0 and os.path.exists(output_path):\n            if os.path.exists(concat_file):\n                os.remove(concat_file)\n            return True\n        return False\n    except Exception as e:\n        return False\n\ninput_data = items[0]['json']\nscript_id = input_data.get('script_id', 'unknown')\nvideos_metadata = input_data.get('videos_metadata', [])\n\nif len(videos_metadata) != 7:\n    raise ValueError(f\"動画数が不正です。期待: 7本、実際: {len(videos_metadata)}本\")\n\ntemp_dir = tempfile.mkdtemp(prefix='wf7_phase4c_')\ndownloaded_paths = []\n\nfor i, video_meta in enumerate(videos_metadata, 1):\n    section = video_meta.get('section', f'video_{i}')\n    video_url = video_meta.get('video_url')\n    if not video_url:\n        raise ValueError(f\"動画URL未設定: section={section}\")\n    video_filename = f\"video_{i}_{section}.mp4\"\n    video_path = os.path.join(temp_dir, video_filename)\n    try:\n        download_video(video_url, video_path)\n    except Exception as e:\n        raise RuntimeError(f\"動画ダウンロード失敗: section={section}, url={video_url}, error={str(e)}\")\n    downloaded_paths.append(video_path)\n\noutput_filename = f\"final_video_{script_id}_{int(time.time())}.mp4\"\noutput_path = os.path.join(temp_dir, output_filename)\n\nif not concat_videos_with_ffmpeg(downloaded_paths, output_path):\n    raise RuntimeError(\"FFmpeg結合失敗\")\n\noutput_size = os.path.getsize(output_path)\ntotal_duration = sum(v.get('duration', 0) for v in videos_metadata)\n\nreturn [{\n    'json': {\n        'success': True,\n        'script_id': script_id,\n        'output_video_path': output_path,\n        'output_video_size': output_size,\n        'total_duration': total_duration,\n        'videos_count': len(videos_metadata),\n        'temp_dir': temp_dir,\n        'articleId': input_data.get('articleId')\n    }\n}]"
+      },
+      "id": "7a2b375b-c75a-4aaf-8c2d-7e0d1c0ba361",
+      "name": "Code - Phase4c FFmpeg Concat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "import base64\n\noutput_video_path = items[0]['json']['output_video_path']\n\nwith open(output_video_path, 'rb') as f:\n    video_binary = f.read()\n    video_base64 = base64.b64encode(video_binary).decode('utf-8')\n\nreturn [{\n    'json': items[0]['json'],\n    'binary': {\n        'data': video_base64\n    }\n}]"
+      },
+      "id": "af50d32c-7aef-45ea-97df-b9844b6dbc1d",
+      "name": "Code - Read Video Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ 'WF7_Final_' + $('Code - Phase4c FFmpeg Concat').item.json.script_id + '_' + $now.toFormat('yyyyMMdd_HHmmss') + '.mp4' }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {
+          "mimeType": "video/mp4"
+        }
+      },
+      "id": "d96dd89e-e1ac-485c-9985-8b7485a244aa",
+      "name": "Google Drive - Upload Final Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1376,
+        -320
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $('Code - Phase4c FFmpeg Concat').item.json.script_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { properties: { Status: { select: { name: 'Rendered' } }, 'Video URL': { url: $json.webViewLink } } } }}",
+        "options": {}
+      },
+      "id": "6974b810-215e-41cd-b6af-cce258aa54e4",
+      "name": "Notion - Update Script Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        -320
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "import shutil\nimport os\n\ntemp_dir = items[0]['json'].get('temp_dir')\n\nif temp_dir and os.path.exists(temp_dir):\n    try:\n        shutil.rmtree(temp_dir)\n        return [{'json': {'cleanup_success': True, 'temp_dir': temp_dir}}]\n    except Exception as e:\n        return [{'json': {'cleanup_success': False, 'error': str(e)}}]\nelse:\n    return [{'json': {'cleanup_success': False, 'error': 'temp_dir not found'}}]"
+      },
+      "id": "4c3f3377-a054-46b9-a406-44234c29ed2c",
+      "name": "Code - Cleanup Temp Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "from PIL import Image, ImageDraw, ImageFont\nimport textwrap\nimport base64\nimport io\nimport json\n\nFONT_PATH = \"/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf\"\nFONT_BOLD_PATH = \"/usr/share/fonts/truetype/noto/NotoSansJP-Bold.ttf\"\n\nDEFAULT_BRAND_COLORS = {\n    'background': '#1a1a2e',\n    'primary_text': '#ffffff',\n    'secondary_text': '#aaaaaa',\n    'accent': '#00d4ff',\n    'cta_bg': '#ff6b6b',\n    'cta_text': '#ffffff'\n}\n\nSECTION_LABELS = {\n    \"hook\": \"フック\",\n    \"intro\": \"導入\",\n    \"point1\": \"ポイント①\",\n    \"point2\": \"ポイント②\",\n    \"point3\": \"ポイント③\",\n    \"summary\": \"まとめ\",\n    \"cta\": \"今すぐ行動\"\n}\n\ndef hex_to_rgb(hex_color):\n    hex_color = hex_color.lstrip('#')\n    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))\n\ndef create_slide(text, section_type, duration, brand_colors, icon=None):\n    bg_color = hex_to_rgb(brand_colors.get('background', '#1a1a2e'))\n    img = Image.new('RGB', (1080, 1920), color=bg_color)\n    draw = ImageDraw.Draw(img)\n    try:\n        if section_type in [\"hook\", \"cta\"]:\n            font_main = ImageFont.truetype(FONT_BOLD_PATH, 90)\n        else:\n            font_main = ImageFont.truetype(FONT_PATH, 70)\n        font_label = ImageFont.truetype(FONT_PATH, 40)\n        font_icon = ImageFont.truetype(FONT_PATH, 120)\n    except Exception as e:\n        print(f\"フォント読み込みエラー: {e}\")\n        font_main = ImageFont.load_default()\n        font_label = ImageFont.load_default()\n        font_icon = ImageFont.load_default()\n    if icon:\n        accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))\n        draw.text((540, 400), icon, fill=accent_color, font=font_icon, anchor=\"mm\")\n    if section_type == \"hook\":\n        wrapped = textwrap.fill(text, width=15)\n        y_offset = 700\n    elif section_type == \"cta\":\n        wrapped = text\n        y_offset = 900\n    else:\n        wrapped = textwrap.fill(text, width=18)\n        y_offset = 600\n    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font_main)\n    text_width = bbox[2] - bbox[0]\n    text_height = bbox[3] - bbox[1]\n    x = (1080 - text_width) // 2\n    y = y_offset\n    draw.multiline_text((x+3, y+3), wrapped, fill=\"#000000\", font=font_main, align=\"center\")\n    primary_text_color = hex_to_rgb(brand_colors.get('primary_text', '#ffffff'))\n    draw.multiline_text((x, y), wrapped, fill=primary_text_color, font=font_main, align=\"center\")\n    label_text = f\"{duration}秒\"\n    secondary_text_color = hex_to_rgb(brand_colors.get('secondary_text', '#aaaaaa'))\n    draw.text((50, 1850), label_text, fill=secondary_text_color, font=font_label)\n    section_label = SECTION_LABELS.get(section_type, \"\")\n    accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))\n    draw.text((50, 100), section_label, fill=accent_color, font=font_label)\n    return img\n\ndef image_to_base64(img):\n    buffer = io.BytesIO()\n    img.save(buffer, format='PNG')\n    buffer.seek(0)\n    return base64.b64encode(buffer.read()).decode()\n\ndef generate_slides(script_data):\n    hook_text = script_data.get('hook_text_5options', ['フックテキストがありません'])[0]\n    intro_text = script_data.get('introduction_text', '導入テキストがありません')\n    point1 = script_data.get('main_point_1', 'ポイント1がありません')\n    point2 = script_data.get('main_point_2', 'ポイント2がありません')\n    point3 = script_data.get('main_point_3', 'ポイント3がありません')\n    summary = script_data.get('summary_text', 'まとめがありません')\n    cta = script_data.get('cta_text_3options', ['CTAがありません'])[0]\n    brand_colors_raw = script_data.get('Brand Colors', DEFAULT_BRAND_COLORS)\n    if isinstance(brand_colors_raw, str):\n        try:\n            brand_colors = json.loads(brand_colors_raw)\n        except:\n            brand_colors = DEFAULT_BRAND_COLORS\n    else:\n        brand_colors = brand_colors_raw if brand_colors_raw else DEFAULT_BRAND_COLORS\n    visual_elements_raw = script_data.get('Visual Elements', {})\n    if isinstance(visual_elements_raw, str):\n        try:\n            visual_elements = json.loads(visual_elements_raw)\n        except:\n            visual_elements = {}\n    else:\n        visual_elements = visual_elements_raw if visual_elements_raw else {}\n    duration_config_raw = script_data.get('Duration Config', {})\n    if isinstance(duration_config_raw, str):\n        try:\n            duration_config = json.loads(duration_config_raw)\n        except:\n            duration_config = {\"hook\": 3, \"intro\": 10, \"point1\": 13, \"point2\": 13, \"point3\": 14, \"summary\": 20, \"cta\": 7}\n    else:\n        duration_config = duration_config_raw if duration_config_raw else {\"hook\": 3, \"intro\": 10, \"point1\": 13, \"point2\": 13, \"point3\": 14, \"summary\": 20, \"cta\": 7}\n    motion_prompts_raw = script_data.get('Motion Prompts', {})\n    if isinstance(motion_prompts_raw, str):\n        try:\n            motion_prompts = json.loads(motion_prompts_raw)\n        except:\n            motion_prompts = {\"hook\": \"dramatic zoom in effect, professional business style, sharp focus\", \"intro\": \"smooth slide transition, calm professional tone, steady camera\", \"point1\": \"gentle fade in with subtle zoom, educational style, clean motion\", \"point2\": \"gentle fade in with subtle zoom, educational style, clean motion\", \"point3\": \"gentle fade in with subtle zoom, educational style, clean motion\", \"summary\": \"cinematic pan effect, inspiring tone, smooth movement\", \"cta\": \"pulsing call-to-action, urgent professional, attention-grabbing\"}\n    else:\n        motion_prompts = motion_prompts_raw if motion_prompts_raw else {\"hook\": \"dramatic zoom in effect, professional business style, sharp focus\", \"intro\": \"smooth slide transition, calm professional tone, steady camera\", \"point1\": \"gentle fade in with subtle zoom, educational style, clean motion\", \"point2\": \"gentle fade in with subtle zoom, educational style, clean motion\", \"point3\": \"gentle fade in with subtle zoom, educational style, clean motion\", \"summary\": \"cinematic pan effect, inspiring tone, smooth movement\", \"cta\": \"pulsing call-to-action, urgent professional, attention-grabbing\"}\n    slides = []\n    icon_hook = visual_elements.get('hook', {}).get('icon', '⚠️')\n    slide_hook = create_slide(hook_text, \"hook\", duration_config.get('hook', 3), brand_colors, icon=icon_hook)\n    slides.append({\"section\": \"hook\", \"duration\": duration_config.get('hook', 3), \"image_base64\": image_to_base64(slide_hook), \"filename\": \"slide_1_hook.png\", \"motion_prompt\": motion_prompts.get('hook', ''), \"text\": hook_text})\n    slide_intro = create_slide(intro_text, \"intro\", duration_config.get('intro', 10), brand_colors)\n    slides.append({\"section\": \"intro\", \"duration\": duration_config.get('intro', 10), \"image_base64\": image_to_base64(slide_intro), \"filename\": \"slide_2_intro.png\", \"motion_prompt\": motion_prompts.get('intro', ''), \"text\": intro_text})\n    points = [(point1, duration_config.get('point1', 13), \"point1\"), (point2, duration_config.get('point2', 13), \"point2\"), (point3, duration_config.get('point3', 14), \"point3\")]\n    for i, (point, duration, section_key) in enumerate(points, start=1):\n        icon = visual_elements.get(section_key, {}).get('icon')\n        slide = create_slide(point, section_key, duration, brand_colors, icon=icon)\n        slides.append({\"section\": section_key, \"duration\": duration, \"image_base64\": image_to_base64(slide), \"filename\": f\"slide_{i+2}_point{i}.png\", \"motion_prompt\": motion_prompts.get(section_key, ''), \"text\": point})\n    slide_summary = create_slide(summary, \"summary\", duration_config.get('summary', 20), brand_colors)\n    slides.append({\"section\": \"summary\", \"duration\": duration_config.get('summary', 20), \"image_base64\": image_to_base64(slide_summary), \"filename\": \"slide_6_summary.png\", \"motion_prompt\": motion_prompts.get('summary', ''), \"text\": summary})\n    slide_cta = create_slide(cta, \"cta\", duration_config.get('cta', 7), brand_colors)\n    slides.append({\"section\": \"cta\", \"duration\": duration_config.get('cta', 7), \"image_base64\": image_to_base64(slide_cta), \"filename\": \"slide_7_cta.png\", \"motion_prompt\": motion_prompts.get('cta', ''), \"text\": cta})\n    return slides\n\ntry:\n    notionPageData = items[0]['json']\n    if 'properties' in notionPageData:\n        notionProps = notionPageData['properties']\n    elif 'scriptData' in notionPageData:\n        notionProps = notionPageData['scriptData']\n    else:\n        notionProps = notionPageData\n    slides = generate_slides(notionProps)\n    return slides\nexcept Exception as e:\n    error_msg = f\"Phase4aスライド生成エラー: {str(e)}\"\n    print(error_msg)\n    return []"
+      },
+      "id": "51ee18d5-4583-4cfa-a565-a6ff7cc38a9d",
+      "name": "Code - Generate Slides with Pillow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        -608
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const base64Data = $json.image_base64;\nconst binaryData = Buffer.from(base64Data, 'base64');\n\nreturn {\n  json: {\n    section: $json.section,\n    duration: $json.duration,\n    filename: $json.filename,\n    motion_prompt: $json.motion_prompt,\n    text: $json.text\n  },\n  binary: {\n    data: {\n      data: binaryData.toString('base64'),\n      mimeType: 'image/png',\n      fileName: $json.filename,\n      fileExtension: 'png'\n    }\n  }\n};"
+      },
+      "id": "5cd725e3-e288-445c-8dbf-ecee636af845",
+      "name": "Code - Convert to Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        -608
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.filename }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "3698e613-f627-4210-ac3d-f2699d494445",
+      "name": "Google Drive - Upload Slide Image",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        -608
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "8ee151cc-0a56-4462-8a58-244a3237ec80",
+      "name": "Aggregate - Combine All Slides",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        -608
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "script_id",
+              "name": "script_id",
+              "value": "={{ $('データ統合').item.json.notionPageId }}",
+              "type": "string"
+            },
+            {
+              "id": "slides_metadata",
+              "name": "slides_metadata",
+              "value": "={{ $json.data.map(item => ({ section: item.section, duration: item.duration, image_url: 'https://drive.google.com/uc?export=download&id=' + item.id, motion_prompt: item.motion_prompt, drive_file_id: item.id, filename: item.filename })) }}",
+              "type": "array"
+            },
+            {
+              "id": "slides_count",
+              "name": "slides_count",
+              "value": "={{ $json.data.length }}",
+              "type": "number"
+            },
+            {
+              "id": "phase4a_success",
+              "name": "phase4a_success",
+              "value": "={{ $json.data.length === 7 }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c5c45a38-3afd-4319-a85c-d964368896c9",
+      "name": "Set - Phase4a Payload New",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -208,
+        -608
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Webhookデータ抽出",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhookデータ抽出": {
+      "main": [
+        [
+          {
+            "node": "Notion API呼び出し",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion API呼び出し": {
+      "main": [
+        [
+          {
+            "node": "URL抽出",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URL抽出": {
+      "main": [
+        [
+          {
+            "node": "URL型チェック",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URL型チェック": {
+      "main": [
+        [
+          {
+            "node": "Script JSON取得",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "データ統合",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Script JSON取得": {
+      "main": [
+        [
+          {
+            "node": "Assets JSON取得",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assets JSON取得": {
+      "main": [
+        [
+          {
+            "node": "データ統合",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "データ統合": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Slides with Pillow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Call Phase4a": {
+      "main": [
+        [
+          {
+            "node": "Set - Phase4a Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Phase4a Payload": {
+      "main": [
+        [
+          {
+            "node": "IF - Phase4a Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Phase4a Success Check": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Call Phase4b",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "エラー時Notion更新",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Call Phase4b": {
+      "main": [
+        [
+          {
+            "node": "Set - Phase4b Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Phase4b Payload": {
+      "main": [
+        [
+          {
+            "node": "IF - Phase4b Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Phase4b Success Check": {
+      "main": [
+        [
+          {
+            "node": "Code - Phase4c FFmpeg Concat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "エラー時Notion更新(Phase4b)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Driveファイル情報取得",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Driveファイル情報取得": {
+      "main": [
+        [
+          {
+            "node": "メタデータ整形",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "メタデータ整形": {
+      "main": [
+        [
+          {
+            "node": "ペイロード構築",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ペイロード構築": {
+      "main": [
+        [
+          {
+            "node": "Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Fetch Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Status": {
+      "main": [
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "Check Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Render Status": {
+      "main": [
+        [
+          {
+            "node": "Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "Get Image Result URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Image Result URL": {
+      "main": [
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "DriveへUL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DriveへUL": {
+      "main": [
+        [
+          {
+            "node": "レスポンスデータ準備",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "レスポンスデータ準備": {
+      "main": [
+        [
+          {
+            "node": "Notion更新",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion更新": {
+      "main": [
+        [
+          {
+            "node": "レスポンスデータ復元",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "レスポンスデータ復元": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Timeout Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Before Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Retry": {
+      "main": [
+        [
+          {
+            "node": "Fetch Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "エラー時Notion更新": {
+      "main": [
+        [
+          {
+            "node": "エラー時Webhook応答",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "エラー時Notion更新(Phase4b)": {
+      "main": [
+        [
+          {
+            "node": "エラー時Webhook応答(Phase4b)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Phase4c FFmpeg Concat": {
+      "main": [
+        [
+          {
+            "node": "Code - Read Video Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Read Video Binary": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Upload Final Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Upload Final Video": {
+      "main": [
+        [
+          {
+            "node": "Notion - Update Script Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion - Update Script Record": {
+      "main": [
+        [
+          {
+            "node": "Code - Cleanup Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Cleanup Temp Files": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Convert to Binary": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Upload Slide Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Upload Slide Image": {
+      "main": [
+        [
+          {
+            "node": "Aggregate - Combine All Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate - Combine All Slides": {
+      "main": [
+        [
+          {
+            "node": "Set - Phase4a Payload New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Phase4a Payload New": {
+      "main": [
+        [
+          {
+            "node": "IF - Phase4a Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Slides with Pillow": {
+      "main": [
+        [
+          {
+            "node": "Code - Convert to Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {}
+}

@@ -1,0 +1,44 @@
+{
+  "script_id": "test-phase4b-e2e-001",
+  "articleId": "test-article-001",
+  "videos_metadata": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "video_url": "https://v3b.fal.media/files/b/monkey/ErYQSu7MBuZB7NBS-3-_J_output.mp4"
+    },
+    {
+      "section": "intro",
+      "duration": 10,
+      "video_url": "https://v3b.fal.media/files/b/zebra/TL6NZ5rSbpAZRT4P8IA0C_output.mp4"
+    },
+    {
+      "section": "point1",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/penguin/j1KJr6fbJYTxTZkTIjLlS_output.mp4"
+    },
+    {
+      "section": "point2",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/panda/lGTFA7_HybUaGORhadu0g_output.mp4"
+    },
+    {
+      "section": "point3",
+      "duration": 14,
+      "video_url": "https://v3b.fal.media/files/b/monkey/TbW1zMlq-vfVL6fHGt-Lv_output.mp4"
+    },
+    {
+      "section": "summary",
+      "duration": 20,
+      "video_url": "https://v3b.fal.media/files/b/zebra/jU_MCQ884eXvR9-nVVA4y_output.mp4"
+    },
+    {
+      "section": "cta",
+      "duration": 7,
+      "video_url": "https://v3b.fal.media/files/b/zebra/WammM1aF25B-8q6Q6t-mJ_output.mp4"
+    }
+  ],
+  "videos_count": 7,
+  "total_duration": 80,
+  "phase4b_success": true
+}

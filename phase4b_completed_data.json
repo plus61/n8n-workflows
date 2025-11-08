@@ -1,0 +1,39 @@
+{
+  "script_id": "test-phase4b-e2e-001",
+  "articleId": "test-article-001",
+  "videos_metadata": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "video_url": "https://v3b.fal.media/files/b/lion/OE1HzjvlVuZeTCURcuj6K_output.mp4"
+    },
+    {
+      "section": "point1",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/koala/hKIhFbB0jUhohTn-2dsZ2_output.mp4"
+    },
+    {
+      "section": "point2",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/lion/Ti133How-ZAoj7mPbnqZV_output.mp4"
+    },
+    {
+      "section": "point3",
+      "duration": 14,
+      "video_url": "https://v3b.fal.media/files/b/lion/9bR-Rt8LEB94SZ68_uTbY_output.mp4"
+    },
+    {
+      "section": "summary",
+      "duration": 20,
+      "video_url": "https://v3b.fal.media/files/b/tiger/4FhwBrazJhEp1w8u3GCrv_output.mp4"
+    },
+    {
+      "section": "cta",
+      "duration": 7,
+      "video_url": "https://v3b.fal.media/files/b/lion/57-FfNoPJTLOilZ3D31aF_output.mp4"
+    }
+  ],
+  "videos_count": 6,
+  "total_duration": 70,
+  "phase4b_success": true
+}

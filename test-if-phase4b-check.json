@@ -1,0 +1,232 @@
+{
+  "name": "Test IF Phase4b Success Check",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-test",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign1",
+              "name": "script_id",
+              "value": "test-script-phase4c-001",
+              "type": "string"
+            },
+            {
+              "id": "assign2",
+              "name": "articleId",
+              "value": "test-article-001",
+              "type": "string"
+            },
+            {
+              "id": "assign3",
+              "name": "videos_metadata",
+              "value": "={{ [{\"section\":\"hook\",\"duration\":3,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"intro\",\"duration\":10,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"point1\",\"duration\":13,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"point2\",\"duration\":13,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"point3\",\"duration\":14,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"summary\",\"duration\":20,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"cta\",\"duration\":7,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"}] }}",
+              "type": "array"
+            },
+            {
+              "id": "assign4",
+              "name": "videos_count",
+              "value": 7,
+              "type": "number"
+            },
+            {
+              "id": "assign5",
+              "name": "total_duration",
+              "value": 80,
+              "type": "number"
+            },
+            {
+              "id": "assign6",
+              "name": "phase4b_success",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "assign7",
+              "name": "success",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-phase4b-payload-test",
+      "name": "Set - Phase4b Payload (Test)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.phase4b_success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.videos_count }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-phase4b-success-check-test",
+      "name": "IF - Phase4b Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "success-result",
+              "name": "result",
+              "value": "SUCCESS: Phase4b check passed! Ready for Phase4c",
+              "type": "string"
+            },
+            {
+              "id": "success-data",
+              "name": "data",
+              "value": "={{ $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "success-path",
+      "name": "Success Path",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-result",
+              "name": "result",
+              "value": "ERROR: Phase4b check failed",
+              "type": "string"
+            },
+            {
+              "id": "error-data",
+              "name": "data",
+              "value": "={{ $json }}",
+              "type": "object"
+            },
+            {
+              "id": "error-reason",
+              "name": "reason",
+              "value": "={{ $json.phase4b_success !== true ? 'phase4b_success is not true' : ($json.videos_count !== 7 ? 'videos_count is not 7' : 'unknown error') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "error-path",
+      "name": "Error Path",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Phase4b Payload (Test)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Phase4b Payload (Test)": {
+      "main": [
+        [
+          {
+            "node": "IF - Phase4b Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Phase4b Success Check": {
+      "main": [
+        [
+          {
+            "node": "Success Path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "",
+  "triggerCount": 0,
+  "tags": []
+}

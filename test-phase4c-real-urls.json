@@ -1,0 +1,78 @@
+{
+  "test_scenario": "Phase4c単体テスト - 実際のFAL動画URL使用",
+  "description": "FAL APIで生成された実動画URLを使用したテストデータ",
+  "timestamp": "2025-11-08T09:30:00Z",
+  "mock_videos": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4",
+      "order": 1,
+      "script_id": "test-script-real-001"
+    },
+    {
+      "section": "intro",
+      "duration": 10,
+      "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4",
+      "order": 2,
+      "script_id": "test-script-real-001"
+    },
+    {
+      "section": "point1",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4",
+      "order": 3,
+      "script_id": "test-script-real-001",
+      "note": "実際のpoint1動画URLに置き換えてください"
+    },
+    {
+      "section": "point2",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4",
+      "order": 4,
+      "script_id": "test-script-real-001",
+      "note": "実際のpoint2動画URLに置き換えてください"
+    },
+    {
+      "section": "point3",
+      "duration": 13,
+      "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4",
+      "order": 5,
+      "script_id": "test-script-real-001",
+      "note": "実際のpoint3動画URLに置き換えてください"
+    },
+    {
+      "section": "summary",
+      "duration": 20,
+      "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4",
+      "order": 6,
+      "script_id": "test-script-real-001",
+      "note": "実際のsummary動画URLに置き換えてください"
+    },
+    {
+      "section": "cta",
+      "duration": 7,
+      "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4",
+      "order": 7,
+      "script_id": "test-script-real-001",
+      "note": "実際のcta動画URLに置き換えてください"
+    }
+  ],
+  "expected_output": {
+    "total_duration": 79,
+    "format": "mp4",
+    "codec": "h264",
+    "audio_codec": "aac",
+    "estimated_file_size_mb": 35
+  },
+  "test_instructions": {
+    "step_1": "n8n UIでワークフローID chPw11OY5sex6d9I を開く",
+    "step_2": "Manual Triggerノードを選択",
+    "step_3": "このJSONファイルのmock_videosをPin dataとして設定",
+    "step_4": "Test workflowボタンをクリック",
+    "step_5": "各ノードの実行結果を確認",
+    "step_6": "FAL APIのレスポンスを検証",
+    "step_7": "最終動画の生成を確認"
+  },
+  "note": "point1-3, summary, ctaの動画URLが未提供のため、hook/introのURLを再利用しています。実際のテストでは全7本の異なる動画URLを使用してください。"
+}

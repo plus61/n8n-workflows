@@ -1,0 +1,17 @@
+{
+  "segments": [
+    {
+      "duration": 5,
+      "telop": "テスト動画1"
+    },
+    {
+      "duration": 5,
+      "telop": "テスト動画2"
+    },
+    {
+      "duration": 5,
+      "telop": "テスト動画3"
+    }
+  ]
+}
+

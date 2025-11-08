@@ -1,0 +1,74 @@
+{
+  "test_scenario": "Phase4c単体テスト用モックデータ",
+  "description": "Phase4bの出力を模擬した7本の動画URLデータ",
+  "timestamp": "2025-11-08T08:56:00Z",
+  "mock_videos": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "video_url": "https://fal.media/files/lion/test-video-hook-3s.mp4",
+      "order": 1,
+      "script_id": "test-script-001"
+    },
+    {
+      "section": "intro",
+      "duration": 10,
+      "video_url": "https://fal.media/files/lion/test-video-intro-10s.mp4",
+      "order": 2,
+      "script_id": "test-script-001"
+    },
+    {
+      "section": "point1",
+      "duration": 13,
+      "video_url": "https://fal.media/files/lion/test-video-point1-13s.mp4",
+      "order": 3,
+      "script_id": "test-script-001"
+    },
+    {
+      "section": "point2",
+      "duration": 13,
+      "video_url": "https://fal.media/files/lion/test-video-point2-13s.mp4",
+      "order": 4,
+      "script_id": "test-script-001"
+    },
+    {
+      "section": "point3",
+      "duration": 13,
+      "video_url": "https://fal.media/files/lion/test-video-point3-13s.mp4",
+      "order": 5,
+      "script_id": "test-script-001"
+    },
+    {
+      "section": "summary",
+      "duration": 20,
+      "video_url": "https://fal.media/files/lion/test-video-summary-20s.mp4",
+      "order": 6,
+      "script_id": "test-script-001"
+    },
+    {
+      "section": "cta",
+      "duration": 7,
+      "video_url": "https://fal.media/files/lion/test-video-cta-7s.mp4",
+      "order": 7,
+      "script_id": "test-script-001"
+    }
+  ],
+  "expected_output": {
+    "total_duration": 79,
+    "format": "mp4",
+    "codec": "h264",
+    "audio_codec": "aac",
+    "estimated_file_size_mb": 35
+  },
+  "test_instructions": {
+    "step_1": "n8n UIでPhase4cワークフローを開く",
+    "step_2": "Manual Triggerノードを選択",
+    "step_3": "このJSONファイルのmock_videosをPin dataとして設定",
+    "step_4": "Aggregateノードでvideo_urlが配列化されることを確認",
+    "step_5": "ペイロード構築ノードでFAL API形式に変換されることを確認",
+    "step_6": "FAL API認証情報を設定後、Submit to FALを実行",
+    "step_7": "Status Pollingが正常に動作することを確認",
+    "step_8": "最終的な動画ダウンロードとDriveアップロードを確認"
+  },
+  "note": "実際のFAL APIテストには有効な動画URLが必要です。上記URLはモック用のサンプルです。"
+}

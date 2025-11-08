@@ -466,11 +466,616 @@ path: "wf7-files-video/:articleId"  // Railway非対応
 
 ---
 
+## 問題5: FAL API Submit to FAL ノードのタイムアウト設定不備
+
+### 症状
+
+**Execution ID: 734** でエラー発生:
+```
+Status: Error
+Duration: 1.5秒
+Error: "The connection was aborted, perhaps the server is offline"
+Node: Submit to FAL
+Timeout: 300ms (実際の設定値)
+```
+
+**エラーログ**:
+```json
+{
+  "error": "timeout of 300ms exceeded",
+  "httpCode": "ECONNABORTED",
+  "message": "The connection was aborted, perhaps the server is offline"
+}
+```
+
+### 根本原因
+
+**「Submit to FAL」ノード**（ID: f21d892c-8100-4b31-ba7c-9455a31e9cf5）のタイムアウト設定が正しく反映されていない可能性。
+
+- **期待値**: 300000ms (300秒)
+- **実際の動作**: 300ms (0.3秒) でタイムアウト
+
+FAL APIへのリクエストは通常500ms以上かかるため、300msでは確実にタイムアウトする。
+
+### 解決策
+
+**ワークフロー全体を更新してタイムアウト設定を明示的に確認・修正**:
+
+```javascript
+// Submit to FAL ノードの設定
+{
+  "parameters": {
+    "method": "POST",
+    "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+    "options": {
+      "timeout": 300000,  // 300秒（300000ミリ秒）
+      "response": {
+        "response": {
+          "responseFormat": "json"
+        }
+      }
+    }
+  }
+}
+```
+
+**他のFAL API呼び出しノードも同様に確認**:
+- **Fetch Status** (ID: eb3a8689-faa9-4db4-9fb2-d26343a34827): `timeout: 300000`
+- **Check Render Status** (ID: 512c653b-e527-4b6c-875a-13dbbb04b694): `timeout: 300000`
+- **Get Image Result URL** (ID: 14d89d20-3adc-4438-b9e8-78fc0df9812e): `timeout: 300000`
+
+### 適用方法
+
+```javascript
+// n8n MCP APIを使用してワークフロー全体を更新
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "SDO8X6oR5W5y2s6A",
+  name: "WF7 Phase4 - V2 Fixed",
+  nodes: [...],  // 全ノード配列（タイムアウト設定を確認）
+  connections: {...}  // 全接続オブジェクト
+})
+```
+
+### 検証結果
+
+**修正後（2025-11-08）**:
+```
+✅ ワークフロー更新成功
+Version Counter: 71 → 73
+Submit to FAL ノード: timeout: 300000 に設定確認
+```
+
+**期待される動作**:
+- FAL APIへのリクエストが300秒以内に完了するまで待機
+- タイムアウトエラーが発生しない
+
+---
+
+## 問題6: Wait for Processingノードがwebhook待機で停止（Execution 744）
+
+### 症状
+
+**Execution ID: 744** が27分経過しても`waiting`状態のまま進展がない:
+```
+Status: waiting
+StartedAt: 2025-11-08T02:27:25.437Z
+StoppedAt: 2025-11-08T02:27:27.733Z
+Duration: 2296ms (約2.3秒)
+Finished: false
+```
+
+**停止ノード**: "Wait for Processing" (ID: ec05e49c-5d59-40a3-8afa-4aab3501d143)
+
+### 根本原因
+
+**「Wait for Processing」ノード**がwebhook待機モードに設定されていた:
+```javascript
+// ❌ 問題のある設定
+{
+  "parameters": {
+    "resume": "webhook",
+    "limit": {
+      "amount": 300  // 300分 = 5時間
+    }
+  },
+  "webhookId": "video-render-wait"
+}
+```
+
+**問題点**:
+- FAL APIは非同期処理のため、webhookを呼び出す仕組みがない
+- webhook待機モードでは、外部からwebhookを呼び出さない限り実行が進まない
+- 実行が`waiting`状態で永続的に停止する
+
+### 解決策
+
+**Waitノードを時間ベース待機に変更**:
+```javascript
+// ✅ 修正後の設定
+{
+  "parameters": {
+    "resume": "time",
+    "waitTime": 5  // 5秒待機
+  }
+}
+```
+
+**ポーリングループの動作**:
+1. `Fetch Status` → FAL APIステータス取得
+2. `Wait for Processing` → 5秒待機（時間ベース）
+3. `Check Render Status` → ステータス再確認
+4. `Render Completed?` → 完了チェック
+   - `COMPLETED` → 結果取得へ
+   - 未完了 → `Retry Counter` → `Wait Before Retry` → ループバック
+
+**「Wait Before Retry」ノードも同様に修正**:
+```javascript
+// ✅ 修正後の設定
+{
+  "parameters": {
+    "resume": "time",
+    "waitTime": 5  // 5秒待機
+  }
+}
+```
+
+### 適用方法
+
+```javascript
+// n8n MCP APIを使用してワークフロー全体を更新
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "SDO8X6oR5W5y2s6A",
+  name: "WF7 Phase4 - V2 Fixed",
+  nodes: [...],  // Wait for Processingノードを時間ベースに変更
+  connections: {...}  // 接続は変更なし
+})
+```
+
+### 検証結果
+
+**修正後（2025-11-08）**:
+```
+✅ ワークフロー更新成功
+Version Counter: 73 → 75
+Wait for Processing ノード: resume: "time", waitTime: 5 に変更
+Wait Before Retry ノード: resume: "time", waitTime: 5 に変更
+```
+
+**期待される動作**:
+- 5秒ごとにFAL APIステータスをポーリング
+- 完了まで自動的にループ継続
+- 最大20回リトライ（合計100秒）後にタイムアウト
+- `waiting`状態で停止しない
+
+### ベストプラクティス
+
+**非同期APIポーリングパターン**:
+- ✅ **時間ベース待機**: `resume: "time"`, `waitTime: 5`
+- ❌ **webhook待機**: `resume: "webhook"`（外部からの呼び出しが必要）
+
+**FAL APIのような非同期処理**:
+- webhook待機は使用しない
+- 時間ベースのポーリングループを実装
+- リトライ回数とタイムアウトを適切に設定
+
+---
+
+## 問題7: Check Retry Limitノードの接続が逆（Execution 756）
+
+### 症状
+
+**Execution ID: 756** で`Get Image Result URL`に到達しない:
+```
+Status: success
+Duration: 8.2秒
+問題: retry_count: 1でretry_count < 20がTrueなのに、Timeout Error Responseに到達
+```
+
+**実行フロー**:
+1. `Render Completed?` → `status: "IN_PROGRESS"` → Falseパス → `Retry Counter`
+2. `Retry Counter` → `retry_count: 1`を設定
+3. `Check Retry Limit` → `retry_count < 20`がTrueなのに、Falseパス（`Timeout Error Response`）に流れる
+4. `Get Image Result URL`に到達しない
+
+### 根本原因
+
+**「Check Retry Limit」ノード**（ID: 9db6c6c7-f0d4-45ef-bfbb-6c18f337dab4）の接続が逆になっていた:
+
+```javascript
+// ❌ 問題のある接続
+{
+  "Check Retry Limit": {
+    "main": [
+      [
+        { "node": "Timeout Error Response" }  // main[0] = Trueパス（間違い）
+      ],
+      [
+        { "node": "Wait Before Retry" }  // main[1] = Falseパス（間違い）
+      ]
+    ]
+  }
+}
+```
+
+**n8nのIFノードの動作**:
+- `main[0]` = Trueパス（条件が満たされた場合）
+- `main[1]` = Falseパス（条件が満たされない場合）
+
+**問題点**:
+- `retry_count < 20`がTrueの場合、`main[0]`に流れるべき
+- しかし、`main[0]`が`Timeout Error Response`に接続されていた
+- そのため、リトライ可能な場合でもタイムアウトエラーが返されていた
+
+### 解決策
+
+**接続を正しい順序に修正**:
+
+```javascript
+// ✅ 修正後の接続
+{
+  "Check Retry Limit": {
+    "main": [
+      [
+        { "node": "Wait Before Retry" }  // main[0] = Trueパス（retry_count < 20）
+      ],
+      [
+        { "node": "Timeout Error Response" }  // main[1] = Falseパス（retry_count >= 20）
+      ]
+    ]
+  }
+}
+```
+
+**正しい動作**:
+- `retry_count < 20`（True）→ `main[0]` → `Wait Before Retry` → リトライ継続
+- `retry_count >= 20`（False）→ `main[1]` → `Timeout Error Response` → タイムアウト
+
+### 適用方法
+
+```javascript
+// n8n MCP APIを使用してワークフロー全体を更新
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "SDO8X6oR5W5y2s6A",
+  name: "WF7 Phase4 - V2 Fixed",
+  nodes: [...],  // 全ノード配列
+  connections: {
+    "Check Retry Limit": {
+      "main": [
+        [
+          { "node": "Wait Before Retry", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Timeout Error Response", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+})
+```
+
+### 検証結果
+
+**修正後（2025-11-08）**:
+```
+✅ ワークフロー更新成功
+Version Counter: 77 → 79
+Check Retry Limit ノード: 接続を修正
+- main[0]（True）→ Wait Before Retry（リトライ継続）
+- main[1]（False）→ Timeout Error Response（タイムアウト）
+```
+
+**期待される動作**:
+- `retry_count < 20`の場合、`Wait Before Retry`に進み、リトライループを継続
+- `retry_count >= 20`の場合、`Timeout Error Response`に進み、タイムアウトエラーを返す
+- FAL APIのレンダリングが完了するまで、最大20回リトライ（合計100秒）を試行
+
+### ベストプラクティス
+
+**IFノードの接続確認**:
+- ✅ **Trueパス（main[0]）**: 条件が満たされた場合の処理
+- ✅ **Falseパス（main[1]）**: 条件が満たされない場合の処理
+- ❌ **接続の逆転**: True/Falseパスが逆になっていると、ロジックエラーが発生
+
+**リトライロジックの検証**:
+- リトライカウンターの初期値を確認
+- リトライ制限の条件を確認
+- IFノードの接続が正しいか確認
+
+---
+
+## 問題8: Get Image Result URLノードのHTTPメソッドエラー（Execution 760）
+
+### 症状
+
+**Execution ID: 760** でエラー発生:
+```
+Status: Error
+Duration: 8.9秒
+Error: "405: Method Not Allowed"
+Node: Get Image Result URL
+```
+
+**エラーログ**:
+```json
+{
+  "error": "Method not allowed - please check you are using the right HTTP method",
+  "httpCode": "405",
+  "message": "Method not allowed - please check you are using the right HTTP method",
+  "request": {
+    "method": "GET",
+    "uri": "https://queue.fal.run/fal-ai/ffmpeg-api/compose/requests/4f29d47c-8b37-4dc6-a609-27d588185f5d"
+  }
+}
+```
+
+### 根本原因
+
+**「Get Image Result URL」ノード**（ID: 14d89d20-3adc-4438-b9e8-78fc0df9812e）の設定に問題がありました:
+
+1. **URLが古い形式を使用**: `/compose/requests/`というパスが使われていた（エラーログより）
+2. **`response_url`を直接使用していない**: `Submit to FAL`のレスポンスに含まれる`response_url`を使用すべき
+3. **HTTPメソッドが明示されていない**: `method`パラメータが指定されていない
+
+**FAL APIの正しい動作**:
+- `Submit to FAL`のレスポンスに`response_url`が含まれる
+- `response_url`は`https://queue.fal.run/fal-ai/ffmpeg-api/requests/{request_id}`の形式
+- 結果を取得するには、`response_url`にGETリクエストを送る必要がある
+
+### 解決策
+
+**`Get Image Result URL`ノードを修正**:
+
+```javascript
+// ✅ 修正後の設定
+{
+  "parameters": {
+    "method": "GET",
+    "url": "={{ $json.response_url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendHeaders": false,
+    "sendBody": false,
+    "options": {
+      "timeout": 300000,
+      "response": {
+        "response": {
+          "responseFormat": "json"
+        }
+      }
+    }
+  }
+}
+```
+
+**重要な変更点**:
+- `method`: `GET`を明示的に指定
+- `url`: `response_url`を直接使用（`Submit to FAL`のレスポンスから取得）
+- `sendHeaders`: `false`に設定（認証は`httpHeaderAuth`で自動的に処理される）
+- `sendBody`: `false`に設定（GETリクエストでは不要）
+
+### 適用方法
+
+```javascript
+// n8n MCP APIを使用してワークフロー全体を更新
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "SDO8X6oR5W5y2s6A",
+  name: "WF7 Phase4 - V2 Fixed",
+  nodes: [...],  // Get Image Result URLノードを修正
+  connections: {...}  // 接続は変更なし
+})
+```
+
+### 検証結果
+
+**修正後（2025-11-08）**:
+```
+✅ ワークフロー更新成功
+Version Counter: 85 → 87
+Get Image Result URL ノード: 
+- method: GET を明示的に指定
+- url: {{ $json.response_url }} を使用
+- sendHeaders: false
+- sendBody: false
+```
+
+**期待される動作**:
+- `Submit to FAL`のレスポンスから`response_url`を取得
+- `response_url`にGETリクエストを送信
+- FAL APIから結果（`video_url`など）を正常に取得
+- 405エラーが発生しない
+
+### ベストプラクティス
+
+**FAL API結果取得パターン**:
+- ✅ **`response_url`を直接使用**: `Submit to FAL`のレスポンスに含まれる`response_url`を使用
+- ✅ **GETメソッドを明示**: `method: "GET"`を明示的に指定
+- ✅ **認証は自動処理**: `httpHeaderAuth`を使用し、`sendHeaders: false`で自動的に認証ヘッダーを追加
+- ❌ **手動でURL構築**: `/compose/requests/{request_id}`のような手動URL構築は避ける
+
+**FAL APIレスポンス構造**:
+```json
+{
+  "status": "COMPLETED",
+  "request_id": "uuid-here",
+  "response_url": "https://queue.fal.run/fal-ai/ffmpeg-api/requests/uuid-here",
+  "status_url": "https://queue.fal.run/fal-ai/ffmpeg-api/requests/uuid-here/status",
+  "video_url": "https://fal.media/files/..."
+}
+```
+
+---
+
+## 問題9: Get Image Result URLノードでresponse_urlが取得できない問題
+
+### 症状
+
+**Execution ID: 766** などで、`Render Completed?`ノードが`COMPLETED`になっても`Get Image Result URL`に進めない、または`response_url`が未定義でエラーが発生する。
+
+**エラーログ**:
+```json
+{
+  "error": "response_url is undefined",
+  "node": "Get Image Result URL"
+}
+```
+
+### 根本原因
+
+**「Get Image Result URL」ノード**（ID: 14d89d20-3adc-4438-b9e8-78fc0df9812e）が`response_url`を直接参照していたが、`Check Render Status`のレスポンスに`response_url`が含まれていない場合がある。
+
+**問題点**:
+- `Check Render Status`のレスポンスには`response_url`が含まれているが、`Render Completed?`のTrueパスに正しく伝播されない場合がある
+- `response_url`が未定義の場合、URL構築に失敗する
+
+### 解決策
+
+**`Get Image Result URL`ノードにフォールバックを追加**:
+
+```javascript
+// ✅ 修正後の設定
+{
+  "parameters": {
+    "method": "GET",
+    "url": "={{ $json.response_url || 'https://queue.fal.run/fal-ai/ffmpeg-api/requests/' + $json.request_id }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendHeaders": false,
+    "sendBody": false,
+    "options": {
+      "timeout": 300000,
+      "response": {
+        "response": {
+          "responseFormat": "json"
+        }
+      }
+    }
+  }
+}
+```
+
+**`Retry Counter`ノードにも`response_url`を保持するように追加**:
+
+```javascript
+// ✅ 修正後の設定
+{
+  "parameters": {
+    "assignments": {
+      "assignments": [
+        {
+          "name": "retry_count",
+          "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}"
+        },
+        {
+          "name": "status_url",
+          "value": "={{ $json.status_url }}"
+        },
+        {
+          "name": "request_id",
+          "value": "={{ $json.request_id }}"
+        },
+        {
+          "name": "status",
+          "value": "={{ $json.status }}"
+        },
+        {
+          "name": "response_url",
+          "value": "={{ $json.response_url || 'https://queue.fal.run/fal-ai/ffmpeg-api/requests/' + $json.request_id }}"
+        }
+      ]
+    }
+  }
+}
+```
+
+**`Download Image`ノードにもフォールバックを追加**:
+
+```javascript
+// ✅ 修正後の設定
+{
+  "parameters": {
+    "url": "={{ $json.images && $json.images[0] ? $json.images[0].url : ($json.video_url || $json.url) }}"
+  }
+}
+```
+
+### 適用方法
+
+```javascript
+// n8n MCP APIを使用してワークフロー全体を更新
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "SDO8X6oR5W5y2s6A",
+  name: "WF7 Phase4 - V2 Fixed",
+  nodes: [...],  // Get Image Result URL、Retry Counter、Download Imageノードを修正
+  connections: {...}  // 接続は変更なし
+})
+```
+
+### 検証結果
+
+**修正後（2025-11-08）**:
+```
+✅ ワークフロー更新成功
+Version Counter: 89 → 91
+Get Image Result URL ノード: response_urlフォールバック追加
+Retry Counter ノード: response_url保持を追加
+Download Image ノード: 複数のレスポンス形式に対応
+```
+
+**期待される動作**:
+- `response_url`が存在する場合、それを優先的に使用
+- `response_url`が存在しない場合、`request_id`からURLを構築
+- FAL APIのレスポンス形式（`images[0].url`、`video_url`、`url`）に対応
+- `Get Image Result URL`に正常に到達し、結果を取得できる
+
+### ベストプラクティス
+
+**FAL API結果取得パターン（改善版）**:
+- ✅ **`response_url`を優先**: `response_url`が存在する場合は優先的に使用
+- ✅ **フォールバックURL構築**: `response_url`が存在しない場合、`request_id`からURLを構築
+- ✅ **複数のレスポンス形式に対応**: `images[0].url`、`video_url`、`url`など複数の形式に対応
+- ✅ **`Retry Counter`で`response_url`を保持**: リトライループでも`response_url`を保持
+
+**FAL APIレスポンス構造（複数パターン対応）**:
+```json
+// パターン1: response_urlを含む
+{
+  "status": "COMPLETED",
+  "request_id": "uuid-here",
+  "response_url": "https://queue.fal.run/fal-ai/ffmpeg-api/requests/uuid-here",
+  "video_url": "https://fal.media/files/..."
+}
+
+// パターン2: images配列を含む
+{
+  "status": "COMPLETED",
+  "request_id": "uuid-here",
+  "images": [
+    {
+      "url": "https://fal.media/files/..."
+    }
+  ]
+}
+
+// パターン3: urlフィールドを含む
+{
+  "status": "COMPLETED",
+  "request_id": "uuid-here",
+  "url": "https://fal.media/files/..."
+}
+```
+
+---
+
 ## 更新履歴
 
 | 日付 | 更新内容 | 担当 |
 |------|----------|------|
 | 2025-11-04 | 初版作成（Execution 101, URL修正問題） | AI Assistant |
+| 2025-11-08 | 問題5追加（FAL APIタイムアウト設定不備） | AI Assistant |
+| 2025-11-08 | 問題6追加（Wait for Processingノードのwebhook待機問題） | AI Assistant |
+| 2025-11-08 | 問題7追加（Check Retry Limitノードの接続が逆） | AI Assistant |
+| 2025-11-08 | 問題8追加（Get Image Result URLノードのHTTPメソッドエラー） | AI Assistant |
+| 2025-11-08 | 問題9追加（Get Image Result URLノードでresponse_urlが取得できない問題） | AI Assistant |
 
 ---
 
@@ -487,9 +1092,15 @@ python -c "from PIL import Image; colors=['blue','green','red','yellow','purple'
 
 | ノード名 | Node ID | 用途 |
 |---------|---------|------|
-| WF7-Phase4 Webhook | 7957d8d7-f929-42f8-92e2-0844eea7d960 | Webhookエントリーポイント |
-| 動画レンダリング実行 | 76598e25-bde1-4f96-970f-03d7e67630ad | FFmpeg実行（タイムアウト修正対象） |
-| 動画メタデータ抽出 | f5dc47f2-a343-4d1f-ba29-d83b6c79abe5 | URL構築（プロトコル修正対象） |
+| Webhook | c86282e3-6130-4bfb-8607-9e5d7dacd398 | Webhookエントリーポイント |
+| Submit to FAL | f21d892c-8100-4b31-ba7c-9455a31e9cf5 | FAL API呼び出し（タイムアウト修正対象） |
+| Fetch Status | eb3a8689-faa9-4db4-9fb2-d26343a34827 | FAL APIステータス取得（タイムアウト設定確認） |
+| Wait for Processing | ec05e49c-5d59-40a3-8afa-4aab3501d143 | ポーリング待機（webhook待機→時間ベース待機に修正） |
+| Check Render Status | 512c653b-e527-4b6c-875a-13dbbb04b694 | レンダリングステータス確認（タイムアウト設定確認） |
+| Get Image Result URL | 14d89d20-3adc-4438-b9e8-78fc0df9812e | 結果URL取得（response_urlフォールバック追加、GETメソッド明示） |
+| Retry Counter | 0d32b86a-ea3f-4fb9-993e-94d024350bf7 | リトライカウンター（response_url保持を追加） |
+| Download Image | d7ebee07-778c-4ea0-85af-e7b407bc8067 | 画像ダウンロード（複数のレスポンス形式に対応） |
+| Wait Before Retry | 89dccc13-3413-4d65-94fa-652758d14a5a | リトライ前待機（webhook待機→時間ベース待機に修正） |
 
 ### テスト用Notion Page
 
@@ -502,10 +1113,12 @@ Database: 29b68d5c-2986-817f-b4e6-f84cf75ea9ed
 
 ### テスト実行コマンド
 
+**WF7 Phase4 V2 Fixed** (Workflow ID: SDO8X6oR5W5y2s6A):
 ```bash
-curl -X POST "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4-render" \
+curl -X POST "https://n8n-python-production-344b.up.railway.app/webhook/wf7-video-script" \
   -H "Content-Type: application/json" \
-  -d '{"notionPageId": "2a068d5c-2986-81a3-ab0c-ff0bc1e4ebb9"}'
+  -d '{"notionPageId": "2a068d5c-2986-81a3-ab0c-ff0bc1e4ebb9"}' \
+  --max-time 600
 ```
 
-期待レスポンス: 200 OK, Duration: 15-30秒
+期待レスポンス: 200 OK, Duration: 15-30秒（FAL API処理時間により変動）

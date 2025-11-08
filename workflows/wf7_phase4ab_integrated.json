@@ -1,0 +1,693 @@
+{
+  "name": "WF7 Phase4ab - Integrated (Slide Generator + Image to Video)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4ab-integrated",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-start",
+      "name": "Webhook - Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 400],
+      "webhookId": "wf7-phase4ab-start",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.body.script_id }}",
+          "mode": "id"
+        }
+      },
+      "id": "notion-get-script",
+      "name": "Notion - Get Script Data",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [460, 400],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "from PIL import Image, ImageDraw, ImageFont\nimport textwrap\nimport base64\nimport io\nimport json\n\n# フォント設定（Railway環境）\nFONT_PATH = \"/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf\"\nFONT_BOLD_PATH = \"/usr/share/fonts/truetype/noto/NotoSansJP-Bold.ttf\"\n\n# デフォルトブランドカラー\nDEFAULT_BRAND_COLORS = {\n    'background': '#1a1a2e',\n    'primary_text': '#ffffff',\n    'secondary_text': '#aaaaaa',\n    'accent': '#00d4ff',\n    'cta_bg': '#ff6b6b',\n    'cta_text': '#ffffff'\n}\n\n# セクションラベル\nSECTION_LABELS = {\n    \"hook\": \"フック\",\n    \"intro\": \"導入\",\n    \"point1\": \"ポイント①\",\n    \"point2\": \"ポイント②\",\n    \"point3\": \"ポイント③\",\n    \"summary\": \"まとめ\",\n    \"cta\": \"今すぐ行動\"\n}\n\ndef hex_to_rgb(hex_color):\n    hex_color = hex_color.lstrip('#')\n    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))\n\ndef create_slide(text, section_type, duration, brand_colors, icon=None):\n    bg_color = hex_to_rgb(brand_colors.get('background', '#1a1a2e'))\n    img = Image.new('RGB', (1080, 1920), color=bg_color)\n    draw = ImageDraw.Draw(img)\n    \n    try:\n        if section_type in [\"hook\", \"cta\"]:\n            font_main = ImageFont.truetype(FONT_BOLD_PATH, 90)\n        else:\n            font_main = ImageFont.truetype(FONT_PATH, 70)\n        font_label = ImageFont.truetype(FONT_PATH, 40)\n        font_icon = ImageFont.truetype(FONT_PATH, 120)\n    except Exception as e:\n        print(f\"フォント読み込みエラー: {e}\")\n        font_main = ImageFont.load_default()\n        font_label = ImageFont.load_default()\n        font_icon = ImageFont.load_default()\n    \n    if icon:\n        accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))\n        draw.text((540, 400), icon, fill=accent_color, font=font_icon, anchor=\"mm\")\n    \n    if section_type == \"hook\":\n        wrapped = textwrap.fill(text, width=15)\n        y_offset = 700\n    elif section_type == \"cta\":\n        wrapped = text\n        y_offset = 900\n    else:\n        wrapped = textwrap.fill(text, width=18)\n        y_offset = 600\n    \n    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font_main)\n    text_width = bbox[2] - bbox[0]\n    text_height = bbox[3] - bbox[1]\n    x = (1080 - text_width) // 2\n    y = y_offset\n    \n    draw.multiline_text((x+3, y+3), wrapped, fill=\"#000000\", font=font_main, align=\"center\")\n    primary_text_color = hex_to_rgb(brand_colors.get('primary_text', '#ffffff'))\n    draw.multiline_text((x, y), wrapped, fill=primary_text_color, font=font_main, align=\"center\")\n    \n    label_text = f\"{duration}秒\"\n    secondary_text_color = hex_to_rgb(brand_colors.get('secondary_text', '#aaaaaa'))\n    draw.text((50, 1850), label_text, fill=secondary_text_color, font=font_label)\n    \n    section_label = SECTION_LABELS.get(section_type, \"\")\n    accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))\n    draw.text((50, 100), section_label, fill=accent_color, font=font_label)\n    \n    return img\n\ndef image_to_base64(img):\n    buffer = io.BytesIO()\n    img.save(buffer, format='PNG')\n    buffer.seek(0)\n    return base64.b64encode(buffer.read()).decode()\n\ndef generate_slides(script_data):\n    # Notionプロパティ取得\n    properties = script_data.get('properties', {})\n    \n    # テキスト取得\n    hook_text = properties.get('hook_text_5options', {}).get('rich_text', [{}])[0].get('plain_text', 'フックテキストがありません')\n    intro_text = properties.get('introduction_text', {}).get('rich_text', [{}])[0].get('plain_text', '導入テキストがありません')\n    point1 = properties.get('main_point_1', {}).get('rich_text', [{}])[0].get('plain_text', 'ポイント1がありません')\n    point2 = properties.get('main_point_2', {}).get('rich_text', [{}])[0].get('plain_text', 'ポイント2がありません')\n    point3 = properties.get('main_point_3', {}).get('rich_text', [{}])[0].get('plain_text', 'ポイント3がありません')\n    summary = properties.get('summary_text', {}).get('rich_text', [{}])[0].get('plain_text', 'まとめがありません')\n    cta = properties.get('cta_text_3options', {}).get('rich_text', [{}])[0].get('plain_text', 'CTAがありません')\n    \n    # ブランドカラー取得\n    brand_colors_raw = properties.get('Brand Colors', {}).get('rich_text', [{}])[0].get('plain_text', '{}')\n    try:\n        brand_colors = json.loads(brand_colors_raw) if brand_colors_raw else DEFAULT_BRAND_COLORS\n    except:\n        brand_colors = DEFAULT_BRAND_COLORS\n    \n    # 視覚要素取得\n    visual_elements_raw = properties.get('Visual Elements', {}).get('rich_text', [{}])[0].get('plain_text', '{}')\n    try:\n        visual_elements = json.loads(visual_elements_raw) if visual_elements_raw else {}\n    except:\n        visual_elements = {}\n    \n    # 秒数設定取得\n    duration_config_raw = properties.get('Duration Config', {}).get('rich_text', [{}])[0].get('plain_text', '{}')\n    try:\n        duration_config = json.loads(duration_config_raw) if duration_config_raw else {\n            \"hook\": 3, \"intro\": 10, \"point1\": 13,\n            \"point2\": 13, \"point3\": 14, \"summary\": 20, \"cta\": 7\n        }\n    except:\n        duration_config = {\n            \"hook\": 3, \"intro\": 10, \"point1\": 13,\n            \"point2\": 13, \"point3\": 14, \"summary\": 20, \"cta\": 7\n        }\n    \n    # Motion Prompts取得\n    motion_prompts_raw = properties.get('Motion Prompts', {}).get('rich_text', [{}])[0].get('plain_text', '{}')\n    try:\n        motion_prompts = json.loads(motion_prompts_raw) if motion_prompts_raw else {\n            \"hook\": \"dramatic zoom in effect, professional business style, sharp focus\",\n            \"intro\": \"smooth slide transition, calm professional tone, steady camera\",\n            \"point1\": \"gentle fade in with subtle zoom, educational style, clean motion\",\n            \"point2\": \"gentle fade in with subtle zoom, educational style, clean motion\",\n            \"point3\": \"gentle fade in with subtle zoom, educational style, clean motion\",\n            \"summary\": \"cinematic pan effect, inspiring tone, smooth movement\",\n            \"cta\": \"pulsing call-to-action, urgent professional, attention-grabbing\"\n        }\n    except:\n        motion_prompts = {\n            \"hook\": \"dramatic zoom in effect, professional business style, sharp focus\",\n            \"intro\": \"smooth slide transition, calm professional tone, steady camera\",\n            \"point1\": \"gentle fade in with subtle zoom, educational style, clean motion\",\n            \"point2\": \"gentle fade in with subtle zoom, educational style, clean motion\",\n            \"point3\": \"gentle fade in with subtle zoom, educational style, clean motion\",\n            \"summary\": \"cinematic pan effect, inspiring tone, smooth movement\",\n            \"cta\": \"pulsing call-to-action, urgent professional, attention-grabbing\"\n        }\n    \n    slides = []\n    \n    # 1. フック\n    icon_hook = visual_elements.get('hook', {}).get('icon', '⚠️')\n    slide_hook = create_slide(hook_text, \"hook\", duration_config.get('hook', 3), brand_colors, icon=icon_hook)\n    slides.append({\n        \"section\": \"hook\",\n        \"duration\": duration_config.get('hook', 3),\n        \"image_base64\": image_to_base64(slide_hook),\n        \"filename\": \"slide_1_hook.png\",\n        \"motion_prompt\": motion_prompts.get('hook', ''),\n        \"text\": hook_text\n    })\n    \n    # 2. 導入\n    slide_intro = create_slide(intro_text, \"intro\", duration_config.get('intro', 10), brand_colors)\n    slides.append({\n        \"section\": \"intro\",\n        \"duration\": duration_config.get('intro', 10),\n        \"image_base64\": image_to_base64(slide_intro),\n        \"filename\": \"slide_2_intro.png\",\n        \"motion_prompt\": motion_prompts.get('intro', ''),\n        \"text\": intro_text\n    })\n    \n    # 3-5. 本編3ポイント\n    points = [\n        (point1, duration_config.get('point1', 13), \"point1\"),\n        (point2, duration_config.get('point2', 13), \"point2\"),\n        (point3, duration_config.get('point3', 14), \"point3\")\n    ]\n    \n    for i, (point, duration, section_key) in enumerate(points, start=1):\n        icon = visual_elements.get(section_key, {}).get('icon')\n        slide = create_slide(point, section_key, duration, brand_colors, icon=icon)\n        slides.append({\n            \"section\": section_key,\n            \"duration\": duration,\n            \"image_base64\": image_to_base64(slide),\n            \"filename\": f\"slide_{i+2}_point{i}.png\",\n            \"motion_prompt\": motion_prompts.get(section_key, ''),\n            \"text\": point\n        })\n    \n    # 6. まとめ\n    slide_summary = create_slide(summary, \"summary\", duration_config.get('summary', 20), brand_colors)\n    slides.append({\n        \"section\": \"summary\",\n        \"duration\": duration_config.get('summary', 20),\n        \"image_base64\": image_to_base64(slide_summary),\n        \"filename\": \"slide_6_summary.png\",\n        \"motion_prompt\": motion_prompts.get('summary', ''),\n        \"text\": summary\n    })\n    \n    # 7. CTA\n    slide_cta = create_slide(cta, \"cta\", duration_config.get('cta', 7), brand_colors)\n    slides.append({\n        \"section\": \"cta\",\n        \"duration\": duration_config.get('cta', 7),\n        \"image_base64\": image_to_base64(slide_cta),\n        \"filename\": \"slide_7_cta.png\",\n        \"motion_prompt\": motion_prompts.get('cta', ''),\n        \"text\": cta\n    })\n    \n    return slides\n\n# メイン処理\nscript_data = items[0]['json']\nslides = generate_slides(script_data)\n\nreturn slides"
+      },
+      "id": "code-generate-slides",
+      "name": "Code - Generate Slides with Pillow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "={{ $json }}",
+        "include": "noOtherFields",
+        "options": {}
+      },
+      "id": "split-out-slides",
+      "name": "Split Out - Individual Slides",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Base64画像をバイナリデータに変換してGoogle Driveアップロード用に準備\nconst base64Data = $json.image_base64;\nconst binaryData = Buffer.from(base64Data, 'base64');\n\nreturn {\n  json: {\n    section: $json.section,\n    duration: $json.duration,\n    filename: $json.filename,\n    motion_prompt: $json.motion_prompt,\n    text: $json.text,\n    image_base64: $json.image_base64\n  },\n  binary: {\n    data: {\n      data: binaryData.toString('base64'),\n      mimeType: 'image/png',\n      fileName: $json.filename,\n      fileExtension: 'png'\n    }\n  }\n};"
+      },
+      "id": "code-convert-binary",
+      "name": "Code - Convert to Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": {
+          "__rl": true,
+          "value": "={{ $json.filename }}",
+          "mode": "id"
+        },
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "root"
+        }
+      },
+      "id": "google-drive-upload",
+      "name": "Google Drive - Upload Slide Image",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1340, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Google Driveアップロードのレスポンスとスライドメタデータをマージ\nconst driveResponse = $input.first().json;\nconst slideMetadata = $('Code - Convert to Binary').item.json;\n\nlet imageUrl = null;\nif (driveResponse.id && !driveResponse.error) {\n  imageUrl = `https://drive.google.com/uc?export=download&id=${driveResponse.id}`;\n}\n\nreturn {\n  json: {\n    section: slideMetadata.section || '',\n    duration: slideMetadata.duration || 0,\n    motion_prompt: slideMetadata.motion_prompt || '',\n    image_url: imageUrl,\n    text: slideMetadata.text || ''\n  }\n};"
+      },
+      "id": "code-merge-metadata",
+      "name": "Code - Merge Slide Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "data",
+        "options": {}
+      },
+      "id": "aggregate-slides",
+      "name": "Aggregate - Combine All Slides",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase4bへの入力データを準備\nconst scriptId = $('Notion - Get Script Data').first().json.id;\nconst slidesMetadata = $json.data || [];\n\nif (!scriptId) {\n  throw new Error('script_id is required');\n}\n\nif (!slidesMetadata || slidesMetadata.length !== 7) {\n  throw new Error('slides_metadata must contain exactly 7 items');\n}\n\n// 各スライドの必須フィールド確認\nfor (const slide of slidesMetadata) {\n  if (!slide.image_url) throw new Error(`Missing image_url for ${slide.section}`);\n  if (slide.duration === undefined || slide.duration === null) throw new Error(`Missing duration for ${slide.section}`);\n  // motion_promptは空文字列でも許可（デフォルト値が設定されるため）\n  if (slide.motion_prompt === undefined || slide.motion_prompt === null) throw new Error(`Missing motion_prompt for ${slide.section}`);\n}\n\nreturn {\n  json: {\n    script_id: scriptId,\n    slides_metadata: slidesMetadata\n  }\n};"
+      },
+      "id": "code-validate-input",
+      "name": "Code - Validate Input for Phase4b",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "slides_metadata",
+        "options": {}
+      },
+      "id": "split-slides",
+      "name": "Split Out - Slides",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [2220, 400]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 現在処理中のスライド（各アイテムごとに実行）\nconst slide = $input.item.json;\nconst scriptId = $('Code - Validate Input for Phase4b').item.json.script_id;\n\n// FAL Compose APIペイロード構築\nconst payload = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: [\n        {\n          url: slide.image_url,\n          timestamp: 0,\n          duration: slide.duration\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    fal_payload: JSON.stringify(payload),\n    slide_metadata: slide,\n    script_id: scriptId,\n    slide_index: $itemIndex\n  }\n};"
+      },
+      "id": "code-prepare-fal",
+      "name": "Code - Prepare FAL Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fal_payload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-submit-fal",
+      "name": "HTTP Request - Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-5s",
+      "name": "Wait - 5 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2660, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('HTTP Request - Submit to FAL').item.json.status_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "http-check-status",
+      "name": "HTTP Request - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "render-complete-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-render-completed",
+      "name": "IF - Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3100, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "http-get-result",
+      "name": "HTTP Request - Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3320, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const resultData = $input.item.json;\nconst slideData = $('Code - Prepare FAL Payload').item.json.slide_metadata;\nconst requestId = $('HTTP Request - Submit to FAL').item.json.request_id;\nconst slideIndex = $('Code - Prepare FAL Payload').item.json.slide_index;\nconst scriptId = $('Code - Prepare FAL Payload').item.json.script_id;\n\n// video_url抽出\nconst videoUrl = resultData.output?.video_url \n  || resultData.video_url \n  || resultData.result?.video_url;\n\nif (!videoUrl) {\n  throw new Error('Video URL not found in FAL API response');\n}\n\n// videos_metadataオブジェクト構築\nreturn {\n  json: {\n    section: slideData.section,\n    duration: slideData.duration,\n    video_url: videoUrl,\n    fal_request_id: requestId,\n    motion_prompt: slideData.motion_prompt,\n    filename: `video_${slideIndex + 1}_${slideData.section}.mp4`,\n    text: slideData.text,\n    slide_index: slideIndex,\n    script_id: scriptId\n  }\n};"
+      },
+      "id": "code-build-video-metadata",
+      "name": "Code - Build Video Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3760, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "retry-count",
+              "name": "retry_count",
+              "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "status-url",
+              "name": "status_url",
+              "value": "={{ $json.status_url }}",
+              "type": "string"
+            },
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "slide-metadata",
+              "name": "slide_metadata",
+              "value": "={{ $('Code - Prepare FAL Payload').item.json.slide_metadata }}",
+              "type": "object"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.response_url }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-retry-counter",
+      "name": "Set - Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3540, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "check-retry-limit",
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-check-retry-limit",
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3760, 500]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-before-retry",
+      "name": "Wait - Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3980, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const slide = $input.first().json.slide_metadata;\nconst retryCount = $input.first().json.retry_count;\n\nreturn {\n  json: {\n    success: false,\n    error: `Rendering timeout for ${slide.section} after ${retryCount} retries`,\n    section: slide.section,\n    retry_count: retryCount\n  }\n};"
+      },
+      "id": "code-timeout-error",
+      "name": "Code - Timeout Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3980, 700]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "data",
+        "include": "allFields"
+      },
+      "id": "aggregate-all-videos",
+      "name": "Aggregate - All Videos",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [3980, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\n\n// Aggregateノードからの出力を取得\nconst aggregatedData = allItems[0]?.json?.data || [];\n\n// 最初のアイテムからscript_idを取得\nconst scriptId = aggregatedData[0]?.script_id || 'unknown';\n\n// videos_metadata配列を構築（sectionの順序でソート）\nconst sectionOrder = ['hook', 'intro', 'point1', 'point2', 'point3', 'summary', 'cta'];\n\nconst videosMetadata = aggregatedData\n  .filter(item => item.video_url) // video_urlがあるもののみ\n  .sort((a, b) => {\n    return sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section);\n  });\n\nreturn {\n  json: {\n    success: true,\n    script_id: scriptId,\n    videos_metadata: videosMetadata,\n    videos_count: videosMetadata.length,\n    total_duration: videosMetadata.reduce((sum, v) => sum + v.duration, 0)\n  }\n};"
+      },
+      "id": "code-build-final-response",
+      "name": "Code - Build Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [4420, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Start": {
+      "main": [
+        [
+          {
+            "node": "Notion - Get Script Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion - Get Script Data": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Slides with Pillow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Slides with Pillow": {
+      "main": [
+        [
+          {
+            "node": "Split Out - Individual Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out - Individual Slides": {
+      "main": [
+        [
+          {
+            "node": "Code - Convert to Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Convert to Binary": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Upload Slide Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Upload Slide Image": {
+      "main": [
+        [
+          {
+            "node": "Code - Merge Slide Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Merge Slide Metadata": {
+      "main": [
+        [
+          {
+            "node": "Aggregate - Combine All Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate - Combine All Slides": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate Input for Phase4b",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate Input for Phase4b": {
+      "main": [
+        [
+          {
+            "node": "Split Out - Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out - Slides": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare FAL Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare FAL Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait - 5 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - 5 Seconds": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Get Result": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Video Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Video Metadata": {
+      "main": [
+        [
+          {
+            "node": "Aggregate - All Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "IF - Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Wait - Before Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Timeout Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Before Retry": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate - All Videos": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Final Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": []
+}
+

@@ -1,0 +1,131 @@
+{
+  "name": "Test Phase4c - HTTP Based (No Python Download)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign1",
+              "name": "script_id",
+              "value": "test-script-phase4c-001",
+              "type": "string"
+            },
+            {
+              "id": "assign2",
+              "name": "articleId",
+              "value": "test-article-001",
+              "type": "string"
+            },
+            {
+              "id": "assign3",
+              "name": "videos_metadata",
+              "value": "={{ [{\"section\":\"hook\",\"duration\":3,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"intro\",\"duration\":10,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"point1\",\"duration\":13,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"point2\",\"duration\":13,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"point3\",\"duration\":14,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"},{\"section\":\"summary\",\"duration\":20,\"video_url\":\"https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4\"},{\"section\":\"cta\",\"duration\":7,\"video_url\":\"https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4\"}] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-test-data",
+      "name": "Set - Test Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "split",
+              "name": "video",
+              "value": "={{ $json.videos_metadata }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "split-videos",
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.video.video_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "http-download-videos",
+      "name": "HTTP - Download Videos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "merge-downloaded",
+      "name": "Merge - All Videos Downloaded",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import subprocess\nimport os\nimport tempfile\nimport time\nimport base64\n\ndef create_concat_file(video_paths, concat_file_path):\n    with open(concat_file_path, 'w', encoding='utf-8') as f:\n        for video_path in video_paths:\n            f.write(f\"file '{video_path}'\\\\n\")\n\ndef concat_videos_with_ffmpeg(video_paths, output_path, timeout=600):\n    try:\n        concat_file = os.path.join(os.path.dirname(output_path), 'concat.txt')\n        create_concat_file(video_paths, concat_file)\n        \n        cmd = [\n            'ffmpeg',\n            '-y',\n            '-safe', '0',\n            '-f', 'concat',\n            '-i', concat_file,\n            '-c', 'copy',\n            output_path\n        ]\n        \n        result = subprocess.run(\n            cmd,\n            capture_output=True,\n            text=True,\n            timeout=timeout\n        )\n        \n        if result.returncode == 0 and os.path.exists(output_path):\n            if os.path.exists(concat_file):\n                os.remove(concat_file)\n            return True\n        return False\n    except Exception as e:\n        return False\n\n# 入力データの取得\ninput_items = items[0]['json']\nscript_id = input_items.get('script_id', 'unknown')\narticle_id = input_items.get('articleId', 'unknown')\nvideos_metadata = input_items.get('videos_metadata', [])\n\n# バイナリデータから動画ファイルを一時保存\ntemp_dir = tempfile.mkdtemp(prefix='wf7_phase4c_')\nvideo_paths = []\n\n# items配列の各アイテムからバイナリデータを取得\nfor i, item in enumerate(items):\n    if 'binary' in item and 'data' in item['binary']:\n        binary_data = item['binary']['data']\n        \n        # バイナリデータをファイルに書き込み\n        section = videos_metadata[i].get('section', f'video_{i+1}') if i < len(videos_metadata) else f'video_{i+1}'\n        video_filename = f\"video_{i+1}_{section}.mp4\"\n        video_path = os.path.join(temp_dir, video_filename)\n        \n        # n8nのバイナリデータは既にファイルとして存在するか、base64エンコードされている\n        # ここでは$binary.data.idを使ってn8nのバイナリストレージから取得する必要がある\n        # 簡易的にデータを書き込む（実装は環境依存）\n        \n        video_paths.append(video_path)\n\n# 出力ファイルパス\noutput_filename = f\"final_video_{script_id}_{int(time.time())}.mp4\"\noutput_path = os.path.join(temp_dir, output_filename)\n\n# FFmpegで結合\nif not concat_videos_with_ffmpeg(video_paths, output_path):\n    raise RuntimeError(\"FFmpeg結合失敗\")\n\noutput_size = os.path.getsize(output_path)\ntotal_duration = sum(v.get('duration', 0) for v in videos_metadata)\n\nreturn [{\n    'json': {\n        'success': True,\n        'script_id': script_id,\n        'output_video_path': output_path,\n        'output_video_size': output_size,\n        'total_duration': total_duration,\n        'videos_count': len(video_paths),\n        'temp_dir': temp_dir,\n        'articleId': article_id\n    }\n}]"
+      },
+      "id": "code-ffmpeg-concat",
+      "name": "Code - FFmpeg Concat Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{"node": "Set - Test Data", "type": "main", "index": 0}]]
+    },
+    "Set - Test Data": {
+      "main": [[{"node": "Split Into Items", "type": "main", "index": 0}]]
+    },
+    "Split Into Items": {
+      "main": [[{"node": "HTTP - Download Videos", "type": "main", "index": 0}]]
+    },
+    "HTTP - Download Videos": {
+      "main": [[{"node": "Merge - All Videos Downloaded", "type": "main", "index": 0}]]
+    },
+    "Merge - All Videos Downloaded": {
+      "main": [[{"node": "Code - FFmpeg Concat Only", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "",
+  "triggerCount": 0,
+  "tags": []
+}

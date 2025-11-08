@@ -16,7 +16,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [-2448, 112],
-      "webhookId": "wf7-phase4-video-render"
+      "webhookId": "wf7-phase4-video-render",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -68,7 +69,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const notionPage = $input.first().json;\nconst props = notionPage.properties;\n\n// URL型プロパティから直接取得\nconst scriptJsonUrl = props['Script JSON']?.url;\nif (!scriptJsonUrl) {\n  throw new Error('Script JSON URL not found in Notion page properties');\n}\n\nconst assetsJsonUrl = props['Assets JSON']?.url;\nif (!assetsJsonUrl) {\n  throw new Error('Assets JSON URL not found in Notion page properties');\n}\n\n// Article ID取得\nconst articleId = props['Article ID']?.rich_text?.[0]?.text?.content\n  || props['Article ID']?.url\n  || notionPage.id;\n\nreturn {\n  json: {\n    notionPageId: notionPage.id,\n    articleId,\n    scriptJsonUrl,\n    assetsJsonUrl\n  }\n};"
+        "jsCode": "const notionPage = $input.first().json;\nconst props = notionPage.properties;\n\n// Script JSON取得: URL型またはrich_text型に対応\nlet scriptJsonUrl = props['Script JSON']?.url;\nlet scriptJsonText = null;\n\nif (scriptJsonUrl) {\n  // URL型プロパティの場合\n} else if (props['Script JSON']?.rich_text?.[0]?.text?.content) {\n  // rich_text型プロパティの場合（JSON文字列が直接入っている）\n  scriptJsonText = props['Script JSON'].rich_text[0].text.content;\n} else {\n  throw new Error('Script JSON not found in Notion page properties (neither URL nor rich_text)');\n}\n\n// Assets JSON取得: URL型またはrich_text型に対応\nlet assetsJsonUrl = props['Assets JSON']?.url;\nlet assetsJsonText = null;\n\nif (assetsJsonUrl) {\n  // URL型プロパティの場合\n} else if (props['Assets JSON']?.rich_text?.[0]?.text?.content) {\n  // rich_text型プロパティの場合（JSON文字列が直接入っている）\n  assetsJsonText = props['Assets JSON'].rich_text[0].text.content;\n} else {\n  throw new Error('Assets JSON not found in Notion page properties (neither URL nor rich_text)');\n}\n\n// Article ID取得\nconst articleId = props['Article ID']?.rich_text?.[0]?.text?.content\n  || props['Article ID']?.url\n  || notionPage.id;\n\nreturn {\n  json: {\n    notionPageId: notionPage.id,\n    articleId,\n    scriptJsonUrl: scriptJsonUrl || null,\n    scriptJsonText: scriptJsonText || null,\n    assetsJsonUrl: assetsJsonUrl || null,\n    assetsJsonText: assetsJsonText || null\n  }\n};"
       },
       "id": "url-extract-node-v2",
       "name": "URL抽出",
@@ -79,7 +80,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $json.scriptJsonUrl }}",
+        "url": "={{ $json.scriptJsonUrl || 'https://example.com/empty' }}",
         "options": {
           "response": {
             "response": {
@@ -92,12 +93,13 @@
       "name": "Script JSON取得",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-1850, 112]
+      "position": [-1850, 112],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $('URL抽出').item.json.assetsJsonUrl }}",
+        "url": "={{ $('URL抽出').item.json.assetsJsonUrl || 'https://example.com/empty' }}",
         "options": {
           "response": {
             "response": {
@@ -110,11 +112,12 @@
       "name": "Assets JSON取得",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-1700, 112]
+      "position": [-1700, 112],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const urlExtractNode = $('URL抽出').item.json;\nconst scriptJsonText = $('Script JSON取得').item.json.data;\nconst assetsJsonText = $json.data;\n\n// assetsJsonから driveFileId と assetTag を抽出\nconst driveFileIdRegex = /\"driveFileId\":\\s*\"([^\"]+)\"/g;\nconst driveFileIds = [];\nlet match;\nwhile ((match = driveFileIdRegex.exec(assetsJsonText)) !== null) {\n  driveFileIds.push(match[1]);\n}\n\nconst assetTagRegex = /\"assetTag\":\\s*\"([^\"]+)\"/g;\nconst assetTags = [];\nwhile ((match = assetTagRegex.exec(assetsJsonText)) !== null) {\n  assetTags.push(match[1]);\n}\n\nconst assetsArray = driveFileIds.map((id, idx) => ({\n  driveFileId: id,\n  assetTag: assetTags[idx] || `asset${idx}`,\n  assetIndex: idx\n}));\n\nreturn {\n  json: {\n    notionPageId: urlExtractNode.notionPageId,\n    articleId: urlExtractNode.articleId,\n    scriptData: JSON.parse(scriptJsonText),\n    assetsData: assetsArray\n  }\n};"
+        "jsCode": "const urlExtractNode = $('URL抽出').item.json;\n\n// Script JSON取得: rich_textから直接取得した場合とURLから取得した場合の両方に対応\nlet scriptJsonText;\nif (urlExtractNode.scriptJsonText) {\n  // rich_textから直接取得した場合\n  scriptJsonText = urlExtractNode.scriptJsonText;\n} else {\n  // URLから取得した場合（HTTP Requestノード経由）\n  scriptJsonText = $('Script JSON取得').item.json.data;\n}\n\n// Assets JSON取得: rich_textから直接取得した場合とURLから取得した場合の両方に対応\nlet assetsJsonText;\nif (urlExtractNode.assetsJsonText) {\n  // rich_textから直接取得した場合\n  assetsJsonText = urlExtractNode.assetsJsonText;\n} else {\n  // URLから取得した場合（HTTP Requestノード経由）\n  assetsJsonText = $json.data;\n}\n\n// assetsJsonから driveFileId と assetTag を抽出\nconst driveFileIdRegex = /\"driveFileId\":\\s*\"([^\"]+)\"/g;\nconst driveFileIds = [];\nlet match;\nwhile ((match = driveFileIdRegex.exec(assetsJsonText)) !== null) {\n  driveFileIds.push(match[1]);\n}\n\nconst assetTagRegex = /\"assetTag\":\\s*\"([^\"]+)\"/g;\nconst assetTags = [];\nwhile ((match = assetTagRegex.exec(assetsJsonText)) !== null) {\n  assetTags.push(match[1]);\n}\n\nconst assetsArray = driveFileIds.map((id, idx) => ({\n  driveFileId: id,\n  assetTag: assetTags[idx] || `asset${idx}`,\n  assetIndex: idx\n}));\n\nreturn {\n  json: {\n    notionPageId: urlExtractNode.notionPageId,\n    articleId: urlExtractNode.articleId,\n    scriptData: JSON.parse(scriptJsonText),\n    assetsData: assetsArray\n  }\n};"
       },
       "id": "data-integration-v2",
       "name": "データ統合",
@@ -198,7 +201,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// FAL APIが期待する形式に変換\nconst scriptData = $('データ統合').item.json.scriptData;\nconst metadataItems = $input.all();\nconst articleId = $('データ統合').item.json.articleId;\n\n// スクリプトのセグメントからdurationを取得\nconst segments = scriptData.segments || [];\nlet currentTimestamp = 0;\n\n// 各アセットからkeyframesを構築\nconst keyframes = metadataItems.map((metaItem, idx) => {\n  const segment = segments[idx] || { duration: 10 };\n  const duration = segment.duration || 10;\n\n  // Google Drive URLを直接使用（data URLではなく）\n  const driveFileId = metaItem.json.driveFileId;\n  const imageUrl = `https://drive.google.com/uc?export=download&id=${driveFileId}`;\n\n  const keyframe = {\n    url: imageUrl,\n    timestamp: currentTimestamp,\n    duration: duration\n  };\n\n  currentTimestamp += duration;\n  return keyframe;\n});\n\n// FAL APIが期待するJSON構造を構築\nconst videoJson = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: keyframes\n    }\n  ]\n};\n\n// JSON文字列として返す\nreturn {\n  json: {\n    json_string: JSON.stringify(videoJson),\n    articleId: articleId\n  }\n};\n"
+        "jsCode": "// FAL APIが期待する形式に変換\nconst scriptData = $('データ統合').item.json.scriptData;\nconst metadataItems = $input.all();\nconst articleId = $('データ統合').item.json.articleId;\nconst notionPageId = $('データ統合').item.json.notionPageId;\n\n// スクリプトのセグメントからdurationを取得\nconst segments = scriptData.segments || [];\nlet currentTimestamp = 0;\n\n// 各アセットからkeyframesを構築\nconst keyframes = metadataItems.map((metaItem, idx) => {\n  const segment = segments[idx] || { duration: 10 };\n  const duration = segment.duration || 10;\n\n  // Google Drive URLを直接使用（data URLではなく）\n  const driveFileId = metaItem.json.driveFileId;\n  const imageUrl = `https://drive.google.com/uc?export=download&id=${driveFileId}`;\n\n  const keyframe = {\n    url: imageUrl,\n    timestamp: currentTimestamp,\n    duration: duration\n  };\n\n  currentTimestamp += duration;\n  return keyframe;\n});\n\n// FAL APIが期待するJSON構造を構築\nconst videoJson = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: keyframes\n    }\n  ]\n};\n\n// JSON文字列として返す\nreturn {\n  json: {\n    json_string: JSON.stringify(videoJson),\n    articleId: articleId,\n    notionPageId: notionPageId\n  }\n};\n"
       },
       "id": "9f3272e3-7d13-4c0a-b2a2-684e62a2b642",
       "name": "ペイロード構築",
@@ -334,11 +337,12 @@
       "name": "Render Completed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [200, 112]
+      "position": [200, 112],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "jsCode": "// FAL APIのstatusレスポンスから結果を抽出\nconst statusResponse = $input.first().json;\n\n// FAL APIの結果はstatusレスポンスのoutputフィールドに含まれる\nconst output = statusResponse.output || statusResponse.result || statusResponse;\n\n// video_urlを抽出（複数の可能な場所をチェック）\nconst videoUrl = output.video_url \n  || output.video \n  || output.url \n  || statusResponse.video_url\n  || statusResponse.video;\n\nif (!videoUrl) {\n  throw new Error('Video URL not found in FAL API response. Response: ' + JSON.stringify(statusResponse));\n}\n\nreturn {\n  json: {\n    video_url: videoUrl,\n    raw_response: statusResponse\n  }\n};"
+        "jsCode": "// Check Render Statusのレスポンスからvideo_urlを抽出\nconst statusData = $input.first().json;\n\n// FAL APIのstatus_urlレスポンスからvideo_urlを抽出（複数のパターンに対応）\nlet videoUrl = statusData.video_url \n  || statusData.output?.video_url\n  || statusData.result?.video_url\n  || statusData.output?.video\n  || statusData.result?.video\n  || statusData.output?.url\n  || statusData.result?.url\n  || (statusData.images && statusData.images[0] && statusData.images[0].url)\n  || statusData.url;\n\nif (!videoUrl) {\n  throw new Error('Video URL not found in FAL API status response. Response: ' + JSON.stringify(statusData));\n}\n\n// データ統合ノードから必要な情報を取得\nconst dataIntegration = $('データ統合').item.json;\n\nreturn {\n  json: {\n    video_url: videoUrl,\n    raw_response: statusData,\n    notionPageId: dataIntegration.notionPageId,\n    articleId: dataIntegration.articleId\n  }\n};"
       },
       "id": "dccd883e-a97d-40b7-8955-9e1dd85252a1",
       "name": "Fetch Result",
@@ -364,10 +368,10 @@
         "contentType": "multipart-form-data",
         "bodyParameters": {
           "parameters": [
-            {
-              "name": "metadata",
-              "value": "={{ JSON.stringify({name: $('データ統合').item.json.articleId + '_final.mp4', mimeType: 'video/mp4'}) }}"
-            },
+              {
+                "name": "metadata",
+                "value": "={{ JSON.stringify({name: $('Fetch Result').item.json.articleId + '_final.mp4', mimeType: 'video/mp4'}) }}"
+              },
             {
               "name": "file",
               "value": "={{ $json.video_url }}"
@@ -391,7 +395,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $('データ統合').item.json.notionPageId }}",
+          "url": "=https://api.notion.com/v1/pages/{{ $('Fetch Result').item.json.notionPageId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "notionApi",
         "sendHeaders": true,
@@ -423,7 +427,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { success: true, videoUrl: $json.webViewLink, notionPageId: $('データ統合').item.json.notionPageId } }}",
+          "responseBody": "={{ { success: true, videoUrl: $json.webViewLink, notionPageId: $('Fetch Result').item.json.notionPageId } }}",
         "options": {}
       },
       "id": "a0b79905-a111-4cde-8c09-ede052e90480",
@@ -498,7 +502,8 @@
       "name": "Check Retry Limit",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [600, 200]
+      "position": [600, 200],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {},

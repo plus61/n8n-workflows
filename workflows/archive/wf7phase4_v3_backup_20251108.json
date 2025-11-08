@@ -1,0 +1,8 @@
+{
+  "backup_date": "2025-11-08",
+  "workflow_id": "qSN7EHj5yl0nPXij",
+  "workflow_name": "WF7phase4_v3",
+  "backup_reason": "Phase4a/b/cドッキング前のベース固定化（S0）",
+  "note": "現行のFAL /compose API単一ペイロード構成をバックアップ。Phase4a/4b/4c多段構成実装前に保存。"
+}
+

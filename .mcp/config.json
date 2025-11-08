@@ -4,7 +4,18 @@
       "command": "/Users/yuichiroooosuger/.nvm/versions/node/v22.20.0/bin/npx",
       "args": ["-y", "@notionhq/notion-mcp-server"],
       "env": {
-        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer YOUR_NOTION_API_TOKEN\", \"Notion-Version\": \"2022-06-28\"}"
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ${NOTION_API_TOKEN}\", \"Notion-Version\": \"2022-06-28\"}"
+      }
+    },
+    "n8n-mcp": {
+      "command": "/Users/yuichiroooosuger/.nvm/versions/node/v22.20.0/bin/npx",
+      "args": ["-y", "n8n-mcp@2.22.11"],
+      "env": {
+        "N8N_API_URL": "${N8N_API_URL:-https://n8n-python-production-344b.up.railway.app}",
+        "N8N_API_KEY": "${N8N_API_KEY}",
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true"
       }
     }
   }

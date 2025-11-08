@@ -110,12 +110,14 @@ Railway n8n環境:
 }
 ```
 - Phase4a失敗時は `IF - Phase4a Status` → `Notion status = error` → `Respond to Webhook` を即返却し、タイムアウトを防止
+- **実装状況**: Phase4a専用ワークフローは n8n Workflow ID `LYPbvJfkMzLlhc6t`（Railway: https://n8n-python-production-344b.up.railway.app/workflow/LYPbvJfkMzLlhc6t）で稼働中。`slides_metadata[7]` の生成とGoogle Driveアップロード済みを確認済み。
 
 ### Step 2: Phase4b（FAL Image-to-Video）を再構築
 - 既存 `Submit to FAL` ノードを `Split In Batches (size:1)` + `HTTP Request - Submit to FAL` + `Wait (10s)` + `HTTP Request - Fetch Status` のループ構造へ置き換え、429回避と明示的な `retryCount <= 5` を実装
 - `Check Render Status` で `status in ["COMPLETED"]` を判定し、成功時のみ `Get Result URL` → `Download Video` を実行、その他はリトライまたは失敗分岐へ送る
 - ループ終了後に `Aggregate - videos_metadata` ノードを追加し、Phase4cに必要な `section, duration, video_url, fal_request_id, render_elapsed` をまとめる
 - 詳細は `docs/implementation/WF7-Phase4abc-docking-plan.md` の「Phase4b → 4c データ契約」を参照
+- **実装状況**: Phase4b専用ワークフローは n8n Workflow ID `wHaKi98mTlUvFIOR`（Railway: https://n8n-python-production-344b.up.railway.app/workflow/wHaKi98mTlUvFIOR）。Phase4a出力を入力に7本の `videos_metadata` を生成するところまで完了済み。
 
 ### Step 3: Phase4c（FFmpeg結合）でファイナル動画生成
 - 新規 `Code - FFmpeg Concat` ノード（`phase4c_ffmpeg_concat.py`）に `videos_metadata` を渡し、`/tmp/wf7_phase4c_{executionId}` へ動画を一時ダウンロード
@@ -575,24 +577,31 @@ ffmpeg -f concat -safe 0 -i filelist.txt -c copy output.mp4
 
 ### 🎬 Phase 4b実装
 
-- [ ] Loop Over Itemsノード実装
-- [ ] HTTP Request（FAL Submit）実装
-- [ ] Waitノード実装
-- [ ] Loop（Check Status）実装
-- [ ] IF（Check Success）実装
-- [ ] Extract Video URLノード実装
-- [ ] Aggregateノード実装
-- [ ] 7本の動画生成テスト
+- [x] S2-1: 既存ワークフローのバックアップ完了（`mcp__n8n-mcp__n8n_get_workflow`で取得済み）
+- [x] S2-2: Phase4b統合指示書作成完了（`docs/implementation/WF7-Phase4b-integration-instructions.md`）
+- [x] S2-3: n8n MCPでPhase4b呼び出しノード追加完了（`HTTP Request - Call Phase4b`）
+  - **実装方法**: `n8n_update_full_workflow`を使用して実装
+  - **Webhook URL**: `https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4b-image-to-video`
+  - **入力**: `{ script_id, slides_metadata }`
+  - **出力**: `{ success, script_id, videos_metadata, videos_count, total_duration }`
+- [x] S2-4: Set - Phase4b Payloadノード実装完了（出力データ整形）
+- [x] S2-5: IF - Phase4b Success Checkノード実装完了（成功判定）
+- [x] S2-6: エラーハンドリングノード実装完了（Phase4b失敗時の処理）
+- [x] S2-7: 接続変更完了（`IF - Phase4a Success Check`のTrue分岐をPhase4b呼び出しに変更）
+- [ ] S2-8: 既存FAL処理ブロックの削除（Phase4c実装後に実施）
+- [ ] S2-9: 7本の動画生成テスト
 
 ### 🎞️ Phase 4c実装
 
-- [ ] Aggregate Videosノード実装
-- [ ] Code Node（Python）でFFmpeg実装
-- [ ] Google Drive Upload実装
-- [ ] Notion DB Update実装
-- [ ] Webhook Responseノード実装
-- [ ] Trigger Phase 5ノード実装
-- [ ] 完成動画生成テスト
+- [x] S3-1: Phase4c実装手順書作成完了（`docs/implementation/WF7-Phase4c-実装手順.md`）
+- [ ] S3-2: Code - Phase4c FFmpeg Concatノード追加（手動実装）
+- [ ] S3-3: Code - Read Video Binaryノード追加（手動実装）
+- [ ] S3-4: Google Drive - Upload Final Videoノード追加（手動実装）
+- [ ] S3-5: Notion - Update Script Recordノード追加（手動実装）
+- [ ] S3-6: Code - Cleanup Temp Filesノード追加（手動実装）
+- [ ] S3-7: Respond to Webhookノード接続（手動実装）
+- [ ] S3-8: 既存FAL処理ブロックの削除（動作確認後）
+- [ ] S3-9: 完成動画生成テスト
 
 ### 🧪 E2Eテスト
 
@@ -736,6 +745,8 @@ E2Eテスト: 1🍅（16分）
 - [WF7-Phase4a-MCPエラー対処法.md](./WF7-Phase4a-MCPエラー対処法.md) - MCPツールエラーの対処法
 - [WF7-Phase4a-integration-guide.md](./WF7-Phase4a-integration-guide.md)
 - [WF7-Phase4a-MCP実装手順.md](./WF7-Phase4a-MCP実装手順.md)
+- [WF7-Phase4b-integration-instructions.md](./WF7-Phase4b-integration-instructions.md) - **Phase4b統合時の参照先（推奨）**
+- [WF7-Phase4c-実装手順.md](./WF7-Phase4c-実装手順.md) - **Phase4c実装時の参照先（推奨）**
 
 ---
 
@@ -745,6 +756,9 @@ E2Eテスト: 1🍅（16分）
 |------|-----------|---------|--------|
 | 2025-11-06 | 1.0 | 初版作成 | Claude Code (Sonnet 4.5) |
 | 2025-11-08 | 1.1 | Phase4a手動実装手順書追加、チェックリスト詳細化 | Claude Code (Composer) |
+| 2025-11-08 | 1.2 | Phase4b統合指示書追加、S2進捗更新 | Claude Code (Composer) |
+| 2025-11-08 | 1.3 | Phase4b統合完了（n8n MCPで実装） | Claude Code (Composer) |
+| 2025-11-08 | 1.4 | Phase4c実装手順書作成完了 | Claude Code (Composer) |
 
 ---
 
