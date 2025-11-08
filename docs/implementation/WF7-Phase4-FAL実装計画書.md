@@ -49,9 +49,27 @@ Railway n8n環境:
   合計: 6🍅（約1.6時間）
 ```
 
+### 最新ベースワークフロー（WF7phase4_v3 / `qSN7EHj5yl0nPXij`）
+
+- **稼働環境**: Railway `https://n8n-python-production-344b.up.railway.app/` でホスト。Webhook→Notion→FAL→Drive→Notion更新までを1本で実行するPhase4 v3がベース
+- **現在の役割**: Phase3までのデータ収集を受け、`Submit to FAL → Fetch Status → Download Image → Driveアップロード → Notion更新 → Webhook応答` までを単一ペイロードで処理
+- **確認済み課題** (`docs/testing/wf7-phase4-v3-test-report.md` より):
+  - FAL `/compose` のレンダリング完了待ちでタイムアウト（28秒で停止）
+  - Webhookレスポンス未返却、`DriveへUL` 以降が実行されない
+  - リトライループが長大な線形チェーンとして検知されており構造改善が必要
+- **ドッキング要件**: Phase4a/4bで生成した `slides_metadata` / `videos_metadata` を本ベースに安全に受け渡し、既存のWebhook～Notion整合性・資格情報を再利用する
+
 ---
 
 ## 🔧 実装計画
+
+### ドッキングロードマップ（WF7phase4_v3ベース）
+
+1. **S0: ベース固定化** – 現行 `WF7phase4_v3 (qSN7EHj5yl0nPXij)` を `mcp__n8n-mcp__n8n_get_workflow` でバックアップ
+2. **S1: Phase4a接続** – Webhook受信直後の「データ統合」以降に Phase4a サブワークフロー（または Sub-Workflow ノード）を挿入し、`slides_metadata[7]` を返す
+3. **S2: Phase4b接続** – 既存 `Submit to FAL` 連鎖を分解し、`Split In Batches → HTTP Request (FAL) → Wait/Fetch Status` 構造へ差し替えて `videos_metadata` を生成
+4. **S3: Phase4c接続** – Phase4bの集約ノード後に `Code (FFmpeg concat)` を追加、結合動画→Drive→Notion更新→Webhook応答を一気通貫化
+5. **S4: テスト&リリース** – Phase4a/b/c単体テスト → E2E → バージョンスナップショット → ドキュメント更新
 
 ### 前提条件の確認
 
@@ -64,6 +82,91 @@ Railway n8n環境:
 1. FAL API Key取得・設定
 2. n8n Credentials登録
 3. 初回動画生成テスト
+
+---
+
+## 🔌 Phase4a/4b/4c ドッキング設計（WF7phase4_v3ベース）
+
+### Step 0: 既存ワークフローの吸収
+- `Webhook - Phase4_v3入口`、`Notion API呼び出し`、`データ統合`、`Notion更新`、`Respond to Webhook` はそのまま再利用し、資格情報や公開URLの変更を避ける
+- `Submit to FAL` 以降の連鎖（`Payload Builder`、`Wait for Processing`、`Retry Counter` など）を差し替え対象に限定し、Railway実行ログの互換性を確保
+- バックアップ: `mcp__n8n-mcp__n8n_get_workflow { id: "qSN7EHj5yl0nPXij" }` でJSONを取得し、`workflows/archive/wf7phase4_v3_YYYYMMDD.json`へ一時保存
+
+### Step 1: Phase4a（スライド生成）を挿入
+- `Execute Workflow` / `Sub-Workflow` ノードで `WF7-Phase4a` を呼び出し、入力に `script_id`, `motion_prompts`, `duration_config`, `visual_elements`, `brand_colors`, `font_sizes` を含める
+- Phase4a出力（`slides_metadata`）を `Set - Phase4a Payload` で下記形式に整形し、後続のFAL処理がそのまま参照できるようにする
+```json
+{
+  "slides_metadata": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "image_url": "https://drive.google.com/uc?export=download&id=...",
+      "motion_prompt": "dramatic zoom in effect...",
+      "drive_file_id": "1abc...",
+      "filename": "slide_1_hook.png"
+    }
+  ]
+}
+```
+- Phase4a失敗時は `IF - Phase4a Status` → `Notion status = error` → `Respond to Webhook` を即返却し、タイムアウトを防止
+
+### Step 2: Phase4b（FAL Image-to-Video）を再構築
+- 既存 `Submit to FAL` ノードを `Split In Batches (size:1)` + `HTTP Request - Submit to FAL` + `Wait (10s)` + `HTTP Request - Fetch Status` のループ構造へ置き換え、429回避と明示的な `retryCount <= 5` を実装
+- `Check Render Status` で `status in ["COMPLETED"]` を判定し、成功時のみ `Get Result URL` → `Download Video` を実行、その他はリトライまたは失敗分岐へ送る
+- ループ終了後に `Aggregate - videos_metadata` ノードを追加し、Phase4cに必要な `section, duration, video_url, fal_request_id, render_elapsed` をまとめる
+- 詳細は `docs/implementation/WF7-Phase4abc-docking-plan.md` の「Phase4b → 4c データ契約」を参照
+
+### Step 3: Phase4c（FFmpeg結合）でファイナル動画生成
+- 新規 `Code - FFmpeg Concat` ノード（`phase4c_ffmpeg_concat.py`）に `videos_metadata` を渡し、`/tmp/wf7_phase4c_{executionId}` へ動画を一時ダウンロード
+- コマンド例: `ffmpeg -y -safe 0 -f concat -i concat.txt -c copy output.mp4`。`codec copy` 失敗時は `libx264` へフォールバック、ログを `concat_log` として保持
+- 結果を `Google Drive - Upload final video` → `Set - Final Video Metadata` → `Notion更新` → `Respond to Webhook` へ接続し、既存レスポンス形式を維持
+
+### Step 4: モニタリングとテスト観点
+- 各Step完了時に `Execution Tag` を付与し、`mcp__n8n-mcp__n8n_list_executions` で `phase4-step1/2/3` を集計可能にする
+- Webhookノードの `responseMode: "responseNode"` を継続しつつ、途中失敗時は必ず `Timeout Error Response` ノードを経由（`onError: continueRegularOutput` を設定）
+- テスト順序: Phase4a単体（ダミーscript_id）→ Phase4b単体（モックslides）→ Phase4c単体（ダミー動画URL）→ Phase4a→4b接続 → フルE2E (`docs/testing/wf7-phase4-v3-test-report.md` の観点を踏襲)
+- 監視: リトライ回数が5回を超えた場合はSlack通知、FFmpeg失敗時は `/tmp` のログパスをNotionに保存して手動リカバリできる状態にする
+
+---
+
+## 🧩 WF7phase4_v3 × Phase4a/4b/4c ドッキングイメージ
+
+```
+┌──────────┐      ┌────────────────────────┐      ┌──────────────────────────┐
+│Webhook    │ POST │ script_id + metadata     │      │ Notion Query + Data Merge │
+│(WF7phase4)├─────▶│ (Phase3成果)             │─────▶│ (既存骨格)                 │
+└──────────┘      └────────────────────────┘      └─────────┬────────────────┘
+                                                              │ slides_metadata request
+                                                     ┌────────▼────────┐
+                                                     │Execute/Sub      │
+                                                     │Phase4a Slides   │
+                                                     └────────┬────────┘
+                                                     slides_metadata │
+                                                                   ▼
+                                                          ┌───────────────┐
+                                                          │Phase4b FAL    │
+                                                          │Split→Compose  │
+                                                          │→Fetch/Retry   │
+                                                          └────────┬──────┘
+                                                        videos_metadata │
+                                                                     ▼
+                                                    ┌────────────────────────┐
+                                                    │Phase4c FFmpeg Concat   │
+                                                    │DL→concat→Drive Upload  │
+                                                    └──────────┬────────────┘
+                                                           final │ video_url
+                                                                  ▼
+                                                         ┌──────────────────┐
+                                                         │Notion Update &   │
+                                                         │Respond to Webhook│
+                                                         └──────────────────┘
+```
+
+- **青: 既存WF7phase4_v3骨格**（Webhook/Notion/レスポンス）をそのまま残し、資格情報や公開URLを変更しない。
+- **緑: Phase4a/4b/4cブロック**はサブワークフローまたはノード追加で段階的に有効化。`slides_metadata` → `videos_metadata` → `final_video` の受け渡しを一本化。
+- **制御ポイント**: 各ブロック完了後に `Execution Tag` とログを残し、問題時は該当ブロックのみ切り戻せる。
+- **テストフロー**: Phase4a単体→Phase4b単体→Phase4c単体→4a+4b→4a+4b+4cの順に段階テスト。Webhook全体テストはPhase4c接続後に実施。
 
 ---
 
@@ -432,13 +535,43 @@ ffmpeg -f concat -safe 0 -i filelist.txt -c copy output.mp4
 
 ### 🎨 Phase 4a実装
 
-- [ ] n8n Webhookノード作成
-- [ ] Notion Database Queryノード実装
-- [ ] Code Node（Python）でPillowスクリプト実装
-- [ ] Split Outノード実装
-- [ ] Google Drive Upload実装
-- [ ] Aggregateノード実装
-- [ ] 7枚の画像生成テスト
+- [x] S0: ベースワークフローバックアップ完了（`workflows/archive/wf7phase4_v3_backup_20251108.json`）
+- [x] S1-1: Notion DBスキーマ確認完了（デフォルト値対応済み）
+- [x] S1-2: Phase4a Code Node用コード準備完了（`workflows/wf7-video-renderer/phase4a_code_node.py`）
+- [x] S1-統合ガイド作成完了（`docs/implementation/WF7-Phase4a-integration-guide.md`）
+- [x] S1-MCP実装手順作成完了（`docs/implementation/WF7-Phase4a-MCP実装手順.md`）
+- [x] S1-手動実装手順書作成完了（`docs/implementation/WF7-Phase4a-手動実装手順.md`）
+- [x] S1-MCPエラー対処法作成完了（`docs/implementation/WF7-Phase4a-MCPエラー対処法.md`）
+- [ ] S1-3: n8n UI/MCPでCode Node追加（「データ統合」ノード後に配置）
+  - **実装方法**: n8n UIで手動実装（`docs/implementation/WF7-Phase4a-手動実装手順.md`を参照）
+  - **MCPツールのエラー**: `n8n_update_partial_workflow`で「Invalid request: request/body must NOT have additional properties」エラーが発生
+  - **対処法**: 手動実装を推奨（`docs/implementation/WF7-Phase4a-MCPエラー対処法.md`を参照）
+  - **改善案実行結果**:
+    - ✅ MCPツールバージョンアップ完了（2.22.11）
+    - ❌ 段階的実装はn8nの制約により不可（接続のないノードは許可されない）
+    - ❌ continueOnErrorモードも不可
+    - **結論**: MCPツールでの自動実装は現時点では困難。手動実装を推奨
+  - [ ] Code Node追加: `Code - Generate Slides with Pillow`
+  - [ ] Pythonコード設定: `workflows/wf7-video-renderer/phase4a_code_node.py`の内容をコピー
+  - [ ] 接続設定: `データ統合` → `Code - Generate Slides with Pillow`
+- [ ] S1-4: Split Outノード実装（スライド用）
+  - [ ] Split Outノード追加: `Split Out - Slides`
+  - [ ] 接続設定: `Code - Generate Slides with Pillow` → `Split Out - Slides`
+- [ ] S1-5: Google Drive Upload実装（各スライド画像）
+  - [ ] Google Drive Uploadノード追加: `Google Drive - Upload Slide Image`
+  - [ ] base64デコード処理追加（Code NodeまたはBinary Data変換）
+  - [ ] 接続設定: `Split Out - Slides` → `Google Drive - Upload Slide Image`
+- [ ] S1-6: Aggregateノード実装（7枚の画像URL統合）
+  - [ ] Aggregateノード追加: `Aggregate - Combine All Slides`
+  - [ ] 接続設定: `Google Drive - Upload Slide Image` → `Aggregate - Combine All Slides`
+- [ ] S1-7: Set - Phase4a Payloadノード実装（Phase4b用データ整形）
+  - [ ] Setノード追加: `Set - Phase4a Payload`
+  - [ ] データ整形設定: `slides_metadata`配列を作成
+  - [ ] 接続設定: `Aggregate - Combine All Slides` → `Set - Phase4a Payload`
+- [ ] S1-8: 7枚の画像生成テスト
+  - [ ] Code Node単体テスト
+  - [ ] Google Driveアップロード確認
+  - [ ] `slides_metadata`出力確認
 
 ### 🎬 Phase 4b実装
 
@@ -599,6 +732,10 @@ E2Eテスト: 1🍅（16分）
 - [Phase4-判断ゲート決定記録.md](../Phase4-判断ゲート決定記録.md)
 - [WF7-Phase4-FAL実装変更点.md](../WF7-Phase4-FAL実装変更点.md)
 - [n8n-workflow-construction-knowledge.md](../knowledge/n8n-workflow-construction-knowledge.md)
+- [WF7-Phase4a-手動実装手順.md](./WF7-Phase4a-手動実装手順.md) - **Phase4a実装時の参照先（推奨）**
+- [WF7-Phase4a-MCPエラー対処法.md](./WF7-Phase4a-MCPエラー対処法.md) - MCPツールエラーの対処法
+- [WF7-Phase4a-integration-guide.md](./WF7-Phase4a-integration-guide.md)
+- [WF7-Phase4a-MCP実装手順.md](./WF7-Phase4a-MCP実装手順.md)
 
 ---
 
@@ -607,6 +744,7 @@ E2Eテスト: 1🍅（16分）
 | 日付 | バージョン | 変更内容 | 担当者 |
 |------|-----------|---------|--------|
 | 2025-11-06 | 1.0 | 初版作成 | Claude Code (Sonnet 4.5) |
+| 2025-11-08 | 1.1 | Phase4a手動実装手順書追加、チェックリスト詳細化 | Claude Code (Composer) |
 
 ---
 

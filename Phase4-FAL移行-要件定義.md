@@ -71,6 +71,67 @@ Phase 5: SNS投稿（既存）
 
 ---
 
+## 🔗 現行ワークフロー構成と統合ゴール
+
+| フェーズ | n8n Workflow ID | URL | 役割 | ステータス |
+|-----------|-----------------|-----|------|-----------|
+| Phase 4a  | `LYPbvJfkMzLlhc6t` | https://n8n-python-production-344b.up.railway.app/workflow/LYPbvJfkMzLlhc6t | Notion台本→7枚スライド画像生成（Pillow） | ✅ 実装済み |
+| Phase 4b  | `wHaKi98mTlUvFIOR` | https://n8n-python-production-344b.up.railway.app/workflow/wHaKi98mTlUvFIOR | スライド画像→FAL Image-to-Video 7本生成 | ✅ 実装済み |
+| WF7phase4_v3 | `qSN7EHj5yl0nPXij` | https://n8n-python-production-344b.up.railway.app/workflow/qSN7EHj5yl0nPXij | Webhook→Notion→FAL単発→Drive→Notion更新（既存骨格） | ✅ 運用中 |
+
+**統合目的**: 上記3ワークフローを段階的にドッキングし、Phase4全体（4a/4b/4c）が単一Webhookから起動して `Phase4-FAL移行-要件定義` の要件（5部構成・コスト最適化・Notion/Drive連携）を満たす最終パイプラインを実現する。
+
+---
+
+## 🧠 Phase4統合アーキテクチャ設計
+
+### 1. 基本方針
+- WF7phase4_v3のWebhook/Notion/Drive応答を親フローとして維持し、Phase4a・Phase4bをサブワークフローとして呼び出し、Phase4c（FFmpeg結合）を追加する。
+- 既存の資格情報（Notion, Google Drive, Slack 等）や外部API設定は変更しない。ノード差し替えと接続改修のみで目的を達成する。
+- 各フェーズのデータ契約をJSONで固定し、`slides_metadata` → `videos_metadata` → `final_video` と段階的に引き継ぐ。
+
+### 2. ドッキング手順
+1. **S0: バックアップ & タグ付け**  
+   - `mcp__n8n-mcp__n8n_get_workflow` で `qSN7EHj5yl0nPXij` を取得し、`workflows/archive/wf7phase4_v3_base.json` として保存。  
+   - 実行タグ `phase4-step0` を設定し、現行運用ログを把握。
+
+2. **S1: Phase4aサブフロー統合**  
+   - 親フローの「データ統合」ノード後に `Execute Workflow - Phase4a` を挿入し、`script_id`, `motion_prompts`, `duration_config` などを渡す。  
+   - 返却された `slides_metadata[7]` を `Set - Phase4a Payload` で整形し、失敗時は `Notion status = error` → `Respond to Webhook` で即応する。
+
+3. **S2: Phase4bドッキング**  
+   - 親フローの `Submit to FAL`～`Download Image` ブロックを `Execute Workflow - Phase4b` へ置換。  
+   - `slides_metadata` をペイロードに渡し、`videos_metadata` を受領。  
+   - 受領データをWF7phase4_v3内で保持し、FALリトライ/タイムアウトをPhase4b側のロジックに統合する。
+
+4. **S3: Phase4c結合ノード追加**  
+   - 新規 `Code - FFmpeg Concat` ノード（`phase4c_ffmpeg_concat.py`）を追加し、`videos_metadata` から7本のMP4を `/tmp` にダウンロード→`ffmpeg -safe 0 -f concat -c copy` で結合。  
+   - `Google Drive - Upload Final Video`、`Notion - Update Script Record`、`Cleanup Temp Files` を親フローに配置して最終成果物を登録。  
+   - エラー時は `Timeout Error Response` とSlack通知を発火。
+
+5. **S4: 統合Webhook最適化**  
+   - 親フローに `Wait for Phase4a/4b` ノードと `Execution Tag` 付与処理を入れ、段階的な完了をログ化。  
+   - Webhookレスポンスは `{"status":"success","script_id":...,"final_video_url":...}` を標準形とし、Phase5以降のトリガー（SNS投稿）へ引き渡す。
+
+### 3. データ契約（統合版）
+
+| ステップ | 主キー | 必須フィールド | 説明 |
+|----------|--------|---------------|------|
+| Phase4a出力 | `script_id` | `slides_metadata[{section,duration,image_url,motion_prompt,drive_file_id}]` | 5部構成＋CTAの7枚画像 | 
+| Phase4b出力 | `script_id` | `videos_metadata[{section,duration,video_url,fal_request_id,render_elapsed}]` | FAL生成7本 | 
+| Phase4c出力 | `script_id` | `final_video_url`, `drive_file_id`, `total_duration`, `concat_log`, `cost_estimate` | 完成動画＋監査情報 | 
+
+各フィールドはNotion「WF7 Scripts」DBとGoogle Driveのメタデータに直結し、`Phase4-FAL移行-要件定義` の「5部構成遵守」「Notion更新」「Drive保存」の要件を満たす。
+
+### 4. テスト & リリース計画
+- **段階テスト**: Phase4a単体 → Phase4b単体（モックslides）→ Phase4c単体（ダミー動画URL）→ 4a+4b → 4a+4b+4c（親フロー）。
+- **E2Eテスト**: WF6完了Webhookを起点にPhase2-3 → 4a → 4b → 4c → Phase5まで連結し、Notion/Drive/Slackを確認。
+- **ロールバック**: 各Sステップ後に `n8n_update_partial_workflow` で差分をGit管理し、問題発生時には直前のJSONへ復元。
+
+---
+
+---
+
 ## 📊 神教育動画12選からの要件マッピング
 
 ### 5部構成の要件（再確認）
@@ -633,15 +694,15 @@ Image-to-Video (Stable Video Diffusion):
 必須条件:
   ✅ Phase 4a: スライド画像生成完了
   ✅ Phase 4b: FAL Image-to-Video統合完了
-  ✅ Phase 4c: FFmpeg結合完了
-  ✅ E2Eテスト成功（正常系＋異常系）
-  ✅ 実装ドキュメント完備
+  ⏳ Phase 4c: FFmpeg結合完了
+  ⏳ E2Eテスト成功（正常系＋異常系）
+  ⏳ 実装ドキュメント完備
 
 品質基準:
-  ✅ テキスト可読性: 100%正確
-  ✅ 動画尺: 60-90秒
-  ✅ ファイルサイズ: <50MB
-  ✅ 処理時間: <5分/本
+  ⏳ テキスト可読性: 100%正確
+  ⏳ 動画尺: 60-90秒
+  ⏳ ファイルサイズ: <50MB
+  ⏳ 処理時間: <5分/本
 ```
 
 ### 成果物
@@ -649,15 +710,112 @@ Image-to-Video (Stable Video Diffusion):
 ```yaml
 ドキュメント:
   ✅ Phase4-FAL移行-要件定義.md
-  ⏳ Phase4a-スライド生成実装ガイド.md
+  ✅ WF7-Phase4a-integration-instructions.md
   ⏳ Phase4b-FAL統合実装ガイド.md
   ⏳ Phase4c-FFmpeg結合実装ガイド.md
 
 実装:
-  ⏳ n8n Phase 4a: Pillowスライド生成
-  ⏳ n8n Phase 4b: FAL API統合
+  ✅ n8n Phase 4a: Webhook（LYPbvJfkMzLlhc6t）運用中
+  ✅ n8n Phase 4b: Webhook（wHaKi98mTlUvFIOR）運用中
   ⏳ n8n Phase 4c: FFmpeg結合
+  ✅ WF7phase4_v3にPhase4a統合完了（S1）
 ```
+
+---
+
+## 📊 実装進捗
+
+### ✅ 完了タスク
+
+#### S1: Phase4a統合（2025-11-08完了）
+
+**ワークフロー**: WF7 Phase4 - V3 Fixed (ID: qSN7EHj5yl0nPXij)
+**更新日時**: 2025-11-08 08:25:34 UTC
+**バージョン**: 14
+
+**実装内容**:
+1. **追加ノード（5個）**:
+   - HTTP Request - Call Phase4a: スライド生成Webhook呼び出し
+   - Set - Phase4a Payload: レスポンスデータ整形
+   - IF - Phase4a Success Check: 成功判定（success=true & slides_count=7）
+   - エラー時Notion更新: Phase4aエラーステータス記録
+   - エラー時Webhook応答: エラーレスポンス送信
+
+2. **修正ノード（2個）**:
+   - Split Out: fieldToSplitOut変更（"assetsData" → "slides_metadata"）
+   - メタデータ整形: durationフィールド追加
+
+3. **接続フロー**:
+```
+データ統合 → HTTP Request - Call Phase4a → Set - Phase4a Payload
+  → IF - Phase4a Success Check
+    ├─ [true] → Split Out → 既存の動画生成フロー
+    └─ [false] → エラー時Notion更新 → エラー時Webhook応答
+```
+
+**検証結果**:
+- 総ノード数: 33個（+5個）
+- 有効な接続: 34個
+- 検証されたExpressions: 43個
+- Critical問題: 2個（既存の構造的問題）
+- Warnings: 46個（typeVersion更新推奨等）
+
+**技術的洞察**:
+- n8n MCP partial updateはHTTP Requestノードで不安定
+- Full update戦略により確実な実装を実現
+- Phase4a統合機能は正常に動作
+
+---
+
+### ⏳ 進行中タスク
+
+#### S2: Phase4bドッキング（次のステップ）
+
+**予定作業**:
+1. 親フローの`Submit to FAL`～`Download Image`ブロックを`Execute Workflow - Phase4b`へ置換
+2. `slides_metadata`をペイロードに渡し、`videos_metadata`を受領
+3. FALリトライ/タイムアウトをPhase4b側のロジックに統合
+
+**必要なドキュメント**: Phase4b-integration-instructions.md（作成予定）
+
+---
+
+### 📅 今後のタスク
+
+#### S3: Phase4c結合ノード追加
+
+**予定作業**:
+1. 新規`Code - FFmpeg Concat`ノード追加
+2. `videos_metadata`から7本のMP4をダウンロード→結合
+3. Google Drive Upload、Notion Update、Cleanup実装
+
+**必要なドキュメント**: Phase4c-FFmpeg実装ガイド.md（作成予定）
+
+---
+
+#### S4: 統合Webhook最適化
+
+**予定作業**:
+1. `Wait for Phase4a/4b`ノード追加
+2. Execution Tag付与処理実装
+3. 標準レスポンス形式実装
+4. Phase5トリガー連携
+
+---
+
+### 📈 進捗サマリー
+
+| フェーズ | ステータス | 完了日 | 備考 |
+|---------|----------|--------|------|
+| Phase4a単体 | ✅ 完了 | 2025-11-06 | Webhook運用中 |
+| Phase4b単体 | ✅ 完了 | 2025-11-06 | Webhook運用中 |
+| S1: Phase4a統合 | ✅ 完了 | 2025-11-08 | WF7に統合完了 |
+| S2: Phase4bドッキング | ⏳ 未着手 | - | 次のステップ |
+| S3: Phase4c結合 | ⏳ 未着手 | - | - |
+| S4: Webhook最適化 | ⏳ 未着手 | - | - |
+| E2Eテスト | ⏳ 未着手 | - | 全統合後 |
+
+**進捗率**: 25% (S1/4完了)
 
 ---
 
