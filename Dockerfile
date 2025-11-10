@@ -1,8 +1,9 @@
 # Railway n8n Dockerfile (n8n専用 - Creatomate統合版)
-# Build timestamp: 2025-11-06 03:32 JST
+# Build timestamp: 2025-11-11 01:30 JST
 # Note: Phase4はCreatomate外部レンダリングを使用（FastAPI不要）
+# Version: 1.39.0+ required for PR #9157 (fixes "No Webhook node found" error with Respond to Webhook)
 # Force rebuild to clear Railway cache - disable Metal Build if issues persist
-FROM n8nio/n8n:latest
+FROM n8nio/n8n:1.68.3
 
 # Verify n8n installation
 RUN which n8n && n8n --version || echo "n8n not found in base image"
