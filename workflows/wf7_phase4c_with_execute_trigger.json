@@ -1,0 +1,803 @@
+{
+  "updatedAt": "2025-11-09T10:47:39.910Z",
+  "createdAt": "2025-11-08T08:56:58.351Z",
+  "id": "chPw11OY5sex6d9I",
+  "name": "WF7 Phase4c - Notion Error Fix (2 Nodes)",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4c-video-concatenator",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-phase4c-start",
+      "name": "Webhook - Phase 4c Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 368],
+      "webhookId": "wf7-phase4c-start",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough",
+        "options": {}
+      },
+      "id": "execute-workflow-trigger-phase4c",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [350, 368]
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "video_url"
+            }
+          ]
+        },
+        "options": {
+          "mergeLists": true
+        }
+      },
+      "id": "aggregate-videos",
+      "name": "Aggregate Videos",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [464, 368],
+      "notes": "Phase4bの7本の動画URLを1つの配列に集約"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FAL FFmpeg API /compose endpoint payload construction (tracks format)\n// Phase4bと同じ形式を使用して、response_urlにGETリクエストを送信した際に正しいレスポンスが返るようにする\n\n// Aggregate Videosノードの出力はvideo_urlの配列のみなので、\n// 元の入力データ（Execute Workflow Trigger）からdurationを取得する\nconst aggregateOutput = $input.first().json;\nconst videoUrls = aggregateOutput.video_url || [];\n\n// notionPageId または script_id の両方に対応\nconst scriptId = $('Execute Workflow Trigger').item.json.notionPageId || $('Execute Workflow Trigger').item.json.script_id || 'unknown';\n\nif (!Array.isArray(videoUrls) || videoUrls.length === 0) {\n  throw new Error('video_url must be a non-empty array');\n}\n\n// 元の入力データからdurationを取得\nconst originalInput = $('Execute Workflow Trigger').all();\n\nlet cumulativeTime = 0;\nconst keyframes = videoUrls.map((url, index) => {\n  // 元の入力データから対応するdurationを取得\n  const duration = originalInput[index]?.json?.duration || 5;\n  const timestamp = cumulativeTime;\n  \n  // 次のタイムスタンプ用に累積時間を更新\n  cumulativeTime += duration;\n  \n  return {\n    url: url,\n    timestamp: timestamp,\n    duration: duration\n  };\n});\n\n// Phase4b形式（tracks）のペイロード\nconst payload = {\n  tracks: [{\n    id: \"1\",\n    type: \"video\",\n    keyframes: keyframes\n  }]\n};\n\nreturn [{ json: { ...payload, script_id: scriptId } }];"
+      },
+      "id": "payload-builder",
+      "name": "ペイロード構築",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 368],
+      "notes": "FAL FFmpeg API /compose用のペイロードを構築（tracks形式）"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "submit-to-fal",
+      "name": "Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [912, 368],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "notes": "FAL FFmpeg API /composeエンドポイントにリクエスト送信"
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "id": "wait-processing",
+      "name": "Wait for Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1136, 368],
+      "webhookId": "phase4c-wait",
+      "notes": "FALのレンダリング開始待ち（10秒）"
+    },
+    {
+      "parameters": {
+        "url": "=https://queue.fal.run/fal-ai/ffmpeg-api/requests/{{ $json.request_id }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-status",
+      "name": "Fetch Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1360, 368],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "notes": "FALのステータスポーリング（最大20回、10秒間隔）"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "COMPLETED"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "render-completed",
+      "name": "Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1584, 368],
+      "notes": "レンダリング完了チェック（status === COMPLETED）"
+    },
+    {
+      "parameters": {
+        "jsCode": "// アプローチ1: Fetch Statusのレスポンスから直接動画URLを抽出\n// ステータスがCOMPLETEDの場合、レスポンスに動画URLが含まれている可能性\nconst statusData = $input.first().json;\n\n// デバッグ用: レスポンス構造をログ出力\nconsole.log('Fetch Status response keys:', Object.keys(statusData));\nconsole.log('Fetch Status response preview:', JSON.stringify(statusData).substring(0, 500));\n\n// 動画URL抽出の試行（複数のパターン）\nlet videoUrl = statusData.output?.video_url\n  || statusData.output?.video?.url\n  || statusData.output?.url\n  || statusData.video_url\n  || statusData.result?.video_url\n  || statusData.video?.url\n  || (statusData.url && !statusData.url.includes('/requests/') && !statusData.url.includes('/status'));\n\n// アプローチ2: response_urlにGETリクエストを送信する必要がある場合のフラグ\n// 修正: boolean型に変換（文字列ではなく）\nconst needsGetRequest = Boolean(!videoUrl && statusData.response_url);\n\nreturn [{\n  json: {\n    video_url: videoUrl || null,\n    needs_get_request: needsGetRequest,\n    response_url: statusData.response_url,\n    request_id: statusData.request_id,\n    raw_status_response: statusData,\n    script_id: $('ペイロード構築').item.json.script_id || 'unknown'\n  }\n}];"
+      },
+      "id": "extract-video-url-attempt1",
+      "name": "Extract Video URL (Attempt 1)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1808, 272],
+      "notes": "Fetch Statusのレスポンスから直接動画URLを抽出（アプローチ1）"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_get_request }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "needs-get-request",
+      "name": "Needs Get Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2032, 272],
+      "notes": "response_urlにGETリクエストが必要かチェック"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "get-result",
+      "name": "Get Result (Approach 2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2240, -32],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "notes": "response_urlにGETリクエストを送信（アプローチ2、成功実例と同じ方法）"
+    },
+    {
+      "parameters": {
+        "jsCode": "// アプローチ2: response_urlのGETレスポンスから動画URLを抽出\n// エラーハンドリングを追加（422エラーの場合、アプローチ4（POST）を試す）\nconst resultData = $input.first().json;\n\n// デバッグ用: レスポンス構造をログ出力\nconsole.log('Get Result response keys:', Object.keys(resultData));\nconsole.log('Get Result response preview:', JSON.stringify(resultData).substring(0, 500));\n\n// エラーレスポンスの場合（422エラーなど）\nif (resultData.detail || resultData.error) {\n  // エラーメッセージから動画URLを抽出できない場合、nullを返す\n  console.warn('Get Result returned error:', JSON.stringify(resultData));\n  \n  // 422エラーの場合、アプローチ4（POSTリクエスト）を試す\n  const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n  const errorDetail = resultData.detail || resultData.error;\n  const is422Error = Array.isArray(errorDetail) && errorDetail.some(e => e.loc && e.loc.includes('tracks')) || \n                     (typeof errorDetail === 'string' && errorDetail.includes('tracks'));\n  const needsPostRequest = Boolean(is422Error && attempt1Data.raw_status_response?.response_url);\n  \n  return [{\n    json: {\n      video_url: null,\n      error: resultData.detail || resultData.error,\n      needs_post_request: needsPostRequest,\n      needs_status_url_request: !needsPostRequest && Boolean(attempt1Data.raw_status_response?.status_url),\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id || 'unknown'\n    }\n  }];\n}\n\n// 動画URL抽出（成功実例パターン）\nlet videoUrl = resultData.output?.video_url\n  || resultData.output?.video?.url\n  || resultData.output?.url\n  || resultData.video_url\n  || resultData.result?.video_url\n  || resultData.video?.url\n  || (resultData.url && !resultData.url.includes('/requests/') && !resultData.url.includes('/status'));\n\nif (!videoUrl) {\n  const availableKeys = Object.keys(resultData);\n  const responsePreview = JSON.stringify(resultData, null, 2).substring(0, 2000);\n  console.warn('Video URL not found in response_url GET response');\n  console.warn('Available keys:', availableKeys);\n  console.warn('Response preview:', responsePreview);\n  \n  // アプローチ3が必要かチェック（status_urlがある場合）\n  const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n  const needsStatusUrlRequest = Boolean(attempt1Data.raw_status_response?.status_url);\n  \n  return [{\n    json: {\n      video_url: null,\n      error: 'Video URL not found in response_url GET response',\n      needs_post_request: false,\n      needs_status_url_request: needsStatusUrlRequest,\n      raw_response: resultData,\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id || 'unknown'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    video_url: videoUrl,\n    needs_post_request: false,\n    needs_status_url_request: false,\n    raw_response: resultData,\n    request_id: $('Extract Video URL (Attempt 1)').item.json.request_id,\n    script_id: $('Extract Video URL (Attempt 1)').item.json.script_id || 'unknown'\n  }\n}];"
+      },
+      "id": "extract-video-url-attempt2",
+      "name": "Extract Video URL (Attempt 2)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2432, -32],
+      "notes": "response_urlのGETレスポンスから動画URLを抽出（アプローチ2、エラーハンドリング追加）"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_post_request }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "needs-post-request",
+      "name": "Needs POST Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2656, 144],
+      "notes": "アプローチ2が422エラーの場合、アプローチ4（POSTリクエスト）が必要かチェック"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ペイロード変換: オプション1実装後、ペイロード構築ノードの出力はすでにtracks形式\n// そのまま使用する（変換不要）\nconst phase4cPayload = $('ペイロード構築').item.json;\nconst attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n\n// オプション1実装後は、ペイロード構築ノードの出力がすでにtracks形式\n// そのまま使用する（script_idは除外）\nconst tracksPayload = {\n  tracks: phase4cPayload.tracks || [{\n    id: \"1\",\n    type: \"video\",\n    keyframes: []\n  }]\n};\n\nreturn [{\n  json: {\n    payload: tracksPayload,\n    response_url: attempt1Data.raw_status_response.response_url,\n    request_id: attempt1Data.request_id,\n    script_id: attempt1Data.script_id || 'unknown'\n  }\n}];"
+      },
+      "id": "convert-payload-to-tracks",
+      "name": "Convert Payload to Tracks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2928, 448],
+      "notes": "Phase4cのinputsペイロードをPhase4bのtracks形式に変換"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "get-result-approach4",
+      "name": "Get Result (Approach 4)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3152, 448],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "notes": "response_urlにPOSTリクエストを送信（アプローチ4、tracksペイロードを含める）"
+    },
+    {
+      "parameters": {
+        "jsCode": "// アプローチ4: response_urlのPOSTレスポンスから動画URLを抽出\nconst resultData = $input.first().json;\n\n// デバッグ用: レスポンス構造をログ出力\nconsole.log('Get Result (Approach 4) response keys:', Object.keys(resultData));\nconsole.log('Get Result (Approach 4) response preview:', JSON.stringify(resultData).substring(0, 500));\n\n// エラーレスポンスの場合\nif (resultData.detail || resultData.error) {\n  console.warn('Get Result (Approach 4) returned error:', JSON.stringify(resultData));\n  const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n  return [{\n    json: {\n      video_url: null,\n      error: resultData.detail || resultData.error,\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id || 'unknown'\n    }\n  }];\n}\n\n// 動画URL抽出（複数のパターンを試す）\nlet videoUrl = resultData.output?.video_url\n  || resultData.output?.video?.url\n  || resultData.output?.url\n  || resultData.video_url\n  || resultData.result?.video_url\n  || resultData.video?.url\n  || (resultData.url && !resultData.url.includes('/requests/') && !resultData.url.includes('/status'));\n\nif (!videoUrl) {\n  const availableKeys = Object.keys(resultData);\n  const responsePreview = JSON.stringify(resultData, null, 2).substring(0, 2000);\n  console.warn('Video URL not found in response_url POST response');\n  console.warn('Available keys:', availableKeys);\n  console.warn('Response preview:', responsePreview);\n  const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n  return [{\n    json: {\n      video_url: null,\n      error: 'Video URL not found in response_url POST response',\n      raw_response: resultData,\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id || 'unknown'\n    }\n  }];\n}\n\nconst attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\nreturn [{\n  json: {\n    video_url: videoUrl,\n    raw_response: resultData,\n    request_id: attempt1Data.request_id,\n    script_id: attempt1Data.script_id || 'unknown'\n  }\n}];"
+      },
+      "id": "extract-video-url-attempt4",
+      "name": "Extract Video URL (Attempt 4)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3376, 448],
+      "notes": "response_urlのPOSTレスポンスから動画URLを抽出（アプローチ4）"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_status_url_request }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "needs-status-url-request",
+      "name": "Needs Status URL Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2896, -160],
+      "notes": "アプローチ2が失敗した場合、アプローチ3（status_url）が必要かチェック"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Extract Video URL (Attempt 1)').item.json.raw_status_response.status_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "get-status-url-approach3",
+      "name": "Get Status URL (Approach 3)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3152, -272],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "notes": "status_urlにGETリクエストを送信（アプローチ3）"
+    },
+    {
+      "parameters": {
+        "jsCode": "// アプローチ3: status_urlのGETレスポンスから動画URLを抽出\nconst resultData = $input.first().json;\n\n// デバッグ用: レスポンス構造をログ出力\nconsole.log('Get Status URL response keys:', Object.keys(resultData));\nconsole.log('Get Status URL response preview:', JSON.stringify(resultData).substring(0, 500));\n\n// エラーレスポンスの場合\nif (resultData.detail || resultData.error) {\n  console.warn('Get Status URL returned error:', JSON.stringify(resultData));\n  const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n  return [{\n    json: {\n      video_url: null,\n      error: resultData.detail || resultData.error,\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id || 'unknown'\n    }\n  }];\n}\n\n// 動画URL抽出（複数のパターンを試す）\nlet videoUrl = resultData.output?.video_url\n  || resultData.output?.video?.url\n  || resultData.output?.url\n  || resultData.video_url\n  || resultData.result?.video_url\n  || resultData.video?.url\n  || (resultData.url && !resultData.url.includes('/requests/') && !resultData.url.includes('/status'));\n\nif (!videoUrl) {\n  const availableKeys = Object.keys(resultData);\n  const responsePreview = JSON.stringify(resultData, null, 2).substring(0, 2000);\n  console.warn('Video URL not found in status_url GET response');\n  console.warn('Available keys:', availableKeys);\n  console.warn('Response preview:', responsePreview);\n  const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n  return [{\n    json: {\n      video_url: null,\n      error: 'Video URL not found in status_url GET response',\n      raw_response: resultData,\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id || 'unknown'\n    }\n  }];\n}\n\nconst attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\nreturn [{\n  json: {\n    video_url: videoUrl,\n    raw_response: resultData,\n    request_id: attempt1Data.request_id,\n    script_id: attempt1Data.script_id || 'unknown'\n  }\n}];"
+      },
+      "id": "extract-video-url-attempt3",
+      "name": "Extract Video URL (Attempt 3)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3376, -288],
+      "notes": "status_urlのGETレスポンスから動画URLを抽出（アプローチ3）"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 動画URLを統合（アプローチ1、アプローチ2、アプローチ4、またはアプローチ3の結果）\n// エラーハンドリングを改善\nconst attempt1Data = $('Extract Video URL (Attempt 1)').item.json;\n\n// アプローチ1で動画URLが取得できた場合\nif (attempt1Data.video_url) {\n  return [{\n    json: {\n      video_url: attempt1Data.video_url,\n      request_id: attempt1Data.request_id,\n      script_id: attempt1Data.script_id,\n      approach: 'status_response_direct'\n    }\n  }];\n}\n\n// アプローチ2の結果を確認（Needs POST Request?のfalse分岐から来る場合）\nlet attempt2Data = null;\ntry {\n  const attempt2Node = $('Extract Video URL (Attempt 2)');\n  if (attempt2Node && attempt2Node.item) {\n    attempt2Data = attempt2Node.item.json;\n  }\n} catch (e) {\n  // アプローチ2が実行されていない場合（アプローチ1で成功した場合）\n}\n\n// アプローチ2で動画URLが取得できた場合\nif (attempt2Data && attempt2Data.video_url) {\n  return [{\n    json: {\n      video_url: attempt2Data.video_url,\n      request_id: attempt2Data.request_id,\n      script_id: attempt2Data.script_id,\n      approach: 'response_url_get'\n    }\n  }];\n}\n\n// アプローチ4の結果を確認（Needs POST Request?のtrue分岐から来る場合）\nlet attempt4Data = null;\ntry {\n  const attempt4Node = $('Extract Video URL (Attempt 4)');\n  if (attempt4Node && attempt4Node.item) {\n    attempt4Data = attempt4Node.item.json;\n  }\n} catch (e) {\n  // アプローチ4が実行されていない場合\n}\n\n// アプローチ4で動画URLが取得できた場合\nif (attempt4Data && attempt4Data.video_url) {\n  return [{\n    json: {\n      video_url: attempt4Data.video_url,\n      request_id: attempt4Data.request_id,\n      script_id: attempt4Data.script_id,\n      approach: 'response_url_post'\n    }\n  }];\n}\n\n// アプローチ3の結果を確認（Needs Status URL Request?のtrue分岐から来る場合）\nlet attempt3Data = null;\ntry {\n  const attempt3Node = $('Extract Video URL (Attempt 3)');\n  if (attempt3Node && attempt3Node.item) {\n    attempt3Data = attempt3Node.item.json;\n  }\n} catch (e) {\n  // アプローチ3が実行されていない場合\n}\n\n// アプローチ3で動画URLが取得できた場合\nif (attempt3Data && attempt3Data.video_url) {\n  return [{\n    json: {\n      video_url: attempt3Data.video_url,\n      request_id: attempt3Data.request_id,\n      script_id: attempt3Data.script_id,\n      approach: 'status_url_get'\n    }\n  }];\n}\n\n// どれも失敗した場合、詳細なエラーメッセージを返す\nconst errorDetails = {\n  attempt1: {\n    video_url: attempt1Data.video_url,\n    needs_get_request: attempt1Data.needs_get_request,\n    response_keys: Object.keys(attempt1Data.raw_status_response || {})\n  },\n  attempt2: attempt2Data ? (attempt2Data.error ? {\n    error: attempt2Data.error,\n    raw_response_keys: Object.keys(attempt2Data.raw_response || {})\n  } : {\n    video_url: attempt2Data.video_url,\n    raw_response_keys: Object.keys(attempt2Data.raw_response || {})\n  }) : 'not executed',\n  attempt4: attempt4Data ? (attempt4Data.error ? {\n    error: attempt4Data.error,\n    raw_response_keys: Object.keys(attempt4Data.raw_response || {})\n  } : {\n    video_url: attempt4Data.video_url,\n    raw_response_keys: Object.keys(attempt4Data.raw_response || {})\n  }) : 'not executed',\n  attempt3: attempt3Data ? (attempt3Data.error ? {\n    error: attempt3Data.error,\n    raw_response_keys: Object.keys(attempt3Data.raw_response || {})\n  } : {\n    video_url: attempt3Data.video_url,\n    raw_response_keys: Object.keys(attempt3Data.raw_response || {})\n  }) : 'not executed'\n};\n\nthrow new Error(\n  'Video URL not found in all approaches.\\n' +\n  'Attempt 1 (status response): ' + JSON.stringify(errorDetails.attempt1, null, 2) + '\\n' +\n  'Attempt 2 (response_url GET): ' + JSON.stringify(errorDetails.attempt2, null, 2) + '\\n' +\n  'Attempt 4 (response_url POST): ' + JSON.stringify(errorDetails.attempt4, null, 2) + '\\n' +\n  'Attempt 3 (status_url GET): ' + JSON.stringify(errorDetails.attempt3, null, 2)\n);"
+      },
+      "id": "merge-video-url",
+      "name": "Merge Video URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3600, 272],
+      "notes": "アプローチ1、アプローチ2、アプローチ4、またはアプローチ3の結果を統合（エラーハンドリング改善）"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.video_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {}
+        }
+      },
+      "id": "download-video",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3824, 272],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "notes": "FALから完成動画をダウンロード（バイナリデータ、FAL認証付き）"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ファイル名を構築\nconst scriptId = $('ペイロード構築').item.json.script_id || 'unknown';\nconst now = new Date();\nconst timestamp = now.toISOString().replace(/[-:]/g, '').replace(/T/, '_').substring(0, 15);\nconst filename = `WF7_Final_${scriptId}_${timestamp}.mp4`;\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    filename: filename,\n    script_id: scriptId\n  },\n  binary: $input.first().binary\n}];"
+      },
+      "id": "build-filename",
+      "name": "Build Filename",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4048, 272],
+      "notes": "Google Driveアップロード用のファイル名を構築"
+    },
+    {
+      "parameters": {
+        "name": {
+          "__rl": true,
+          "mode": "expression",
+          "value": "={{ $json.filename }}"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "upload-to-drive",
+      "name": "Upload to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [4272, 272],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "完成動画をGoogle Driveにアップロード"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Phase4c completed\", \"final_video_url\": $json.webViewLink } }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [4720, 272],
+      "notes": "Webhookに成功レスポンス返却"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=FAL rendering failed or timed out: {{ $json.status }}"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1808, 464],
+      "notes": "レンダリング失敗時のエラーハンドリング"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.script_id || $('ペイロード構築').item.json.script_id || $('Execute Workflow Trigger').item.json.notionPageId || $('Execute Workflow Trigger').item.json.script_id }}"
+        },
+        "simple": false,
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status",
+              "type": "select",
+              "selectValue": "completed"
+            },
+            {
+              "key": "Final Video URL",
+              "type": "url",
+              "urlValue": "={{ $json.webViewLink || $json.video_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e89d06cf-8be6-436b-9599-fb004cdc43a7",
+      "name": "Update Notion DB",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [4496, 272],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      },
+      "continueOnFail": true,
+      "onError": "continueRegularOutput",
+      "notes": "Notion DBのステータスを'completed'に更新、final_video_url記録。notionPageId || script_idに対応"
+    }
+  ],
+  "connections": {
+    "Webhook - Phase 4c Start": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Videos": {
+      "main": [
+        [
+          {
+            "node": "ペイロード構築",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ペイロード構築": {
+      "main": [
+        [
+          {
+            "node": "Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "Fetch Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Status": {
+      "main": [
+        [
+          {
+            "node": "Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "Extract Video URL (Attempt 1)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video URL (Attempt 1)": {
+      "main": [
+        [
+          {
+            "node": "Needs Get Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Get Request?": {
+      "main": [
+        [
+          {
+            "node": "Get Result (Approach 2)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Result (Approach 2)": {
+      "main": [
+        [
+          {
+            "node": "Extract Video URL (Attempt 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video URL (Attempt 2)": {
+      "main": [
+        [
+          {
+            "node": "Needs POST Request?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Needs Status URL Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs POST Request?": {
+      "main": [
+        [
+          {
+            "node": "Convert Payload to Tracks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Needs Status URL Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Payload to Tracks": {
+      "main": [
+        [
+          {
+            "node": "Get Result (Approach 4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Result (Approach 4)": {
+      "main": [
+        [
+          {
+            "node": "Extract Video URL (Attempt 4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video URL (Attempt 4)": {
+      "main": [
+        [
+          {
+            "node": "Merge Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Status URL Request?": {
+      "main": [
+        [
+          {
+            "node": "Get Status URL (Approach 3)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Status URL (Approach 3)": {
+      "main": [
+        [
+          {
+            "node": "Extract Video URL (Attempt 3)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video URL (Attempt 3)": {
+      "main": [
+        [
+          {
+            "node": "Merge Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Video URL": {
+      "main": [
+        [
+          {
+            "node": "Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video": {
+      "main": [
+        [
+          {
+            "node": "Build Filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Filename": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Update Notion DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Notion DB": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "fe814152-b609-47d3-92e5-2bd6a8c592a0",
+  "versionCounter": 40,
+  "triggerCount": 0,
+  "shared": [],
+  "tags": []
+}
+

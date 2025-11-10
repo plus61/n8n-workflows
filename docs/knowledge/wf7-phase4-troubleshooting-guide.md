@@ -1066,6 +1066,215 @@ Download Image ノード: 複数のレスポンス形式に対応
 
 ---
 
+## 問題10: FAL API `/compose`エンドポイントで`response_url`にGETリクエストを送信すると422エラーが発生（Phase4c）
+
+### 症状
+
+**Execution ID: 1032, 1035, 1036, 1037, 1039, 1041, 1042** でエラー発生:
+```
+Status: Error
+Error: "422: Field required: tracks"
+Node: Get Result (Approach 2) または Download Video
+```
+
+**エラーログ**:
+```json
+{
+  "detail": [{
+    "type": "missing",
+    "loc": ["body", "tracks"],
+    "msg": "Field required",
+    "input": {
+      "inputs": [...],
+      "output_format": "mp4",
+      "concat_method": "concat",
+      "video_codec": "h264",
+      "audio_codec": "aac"
+    }
+  }]
+}
+```
+
+### 根本原因
+
+**FAL API `/compose`エンドポイントのペイロード形式の問題**:
+
+1. **`inputs`形式と`tracks`形式の不一致**
+   - Phase4cでは`inputs`形式のペイロードを使用していた
+   - しかし、`response_url`にGETリクエストを送信する際、FAL APIは`tracks`形式を期待している
+   - そのため、422エラー（Field required: tracks）が発生
+
+2. **`response_url`の正しい使用方法**
+   - `response_url`は結果を取得するエンドポイント
+   - GETリクエストを送信する際、元のリクエストと同じ形式（`tracks`形式）が必要
+   - `inputs`形式のペイロードでは動作しない
+
+### 解決策
+
+**オプション1: ペイロードを`tracks`形式に変更（推奨）**
+
+**`ペイロード構築`ノードのコードを修正**:
+
+```javascript
+// ✅ 修正後のコード（tracks形式）
+// FAL FFmpeg API /compose endpoint payload construction (tracks format)
+// Phase4bと同じ形式を使用して、response_urlにGETリクエストを送信した際に正しいレスポンスが返るようにする
+
+const aggregateOutput = $input.first().json;
+const videoUrls = aggregateOutput.video_url || [];
+const scriptId = aggregateOutput.script_id || 'unknown';
+
+if (!Array.isArray(videoUrls) || videoUrls.length === 0) {
+  throw new Error('video_url must be a non-empty array');
+}
+
+// 元の入力データからdurationを取得
+const originalInput = $('When clicking \'Test workflow\'').all();
+
+let cumulativeTime = 0;
+const keyframes = videoUrls.map((url, index) => {
+  // 元の入力データから対応するdurationを取得
+  const duration = originalInput[index]?.json?.duration || 5;
+  const timestamp = cumulativeTime;
+  
+  // 次のタイムスタンプ用に累積時間を更新
+  cumulativeTime += duration;
+  
+  return {
+    url: url,
+    timestamp: timestamp,
+    duration: duration
+  };
+});
+
+// Phase4b形式（tracks）のペイロード
+const payload = {
+  tracks: [{
+    id: "1",
+    type: "video",
+    keyframes: keyframes
+  }]
+};
+
+return [{ json: { ...payload, script_id: scriptId } }];
+```
+
+**重要なポイント**:
+- `tracks`配列に`keyframes`を含める
+- 各`keyframe`に`url`、`timestamp`、`duration`を設定
+- `timestamp`は累積時間を計算（前の動画の終了時点）
+- `duration`は元の入力データから取得、またはデフォルト値（5秒）を使用
+
+**`Convert Payload to Tracks`ノードのコードも修正**:
+
+```javascript
+// ✅ 修正後のコード（オプション1実装後に対応）
+// ペイロード変換: オプション1実装後、ペイロード構築ノードの出力はすでにtracks形式
+// そのまま使用する（変換不要）
+const phase4cPayload = $('ペイロード構築').item.json;
+const attempt1Data = $('Extract Video URL (Attempt 1)').item.json;
+
+// オプション1実装後は、ペイロード構築ノードの出力がすでにtracks形式
+// そのまま使用する（script_idは除外）
+const tracksPayload = {
+  tracks: phase4cPayload.tracks || [{
+    id: "1",
+    type: "video",
+    keyframes: []
+  }]
+};
+
+return [{
+  json: {
+    payload: tracksPayload,
+    response_url: attempt1Data.raw_status_response.response_url,
+    request_id: attempt1Data.request_id,
+    script_id: attempt1Data.script_id || 'unknown'
+  }
+}];
+```
+
+### 適用方法
+
+```javascript
+// n8n MCP APIを使用してワークフロー全体を更新
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "chPw11OY5sex6d9I",
+  name: "WF7 Phase4c - Perfect Implementation",
+  nodes: [...],  // ペイロード構築ノードとConvert Payload to Tracksノードを修正
+  connections: {...}  // 接続は変更なし
+})
+```
+
+### 検証結果
+
+**修正後（Execution 1045）**:
+```
+✅ ワークフロー更新成功
+Version Counter: 33 → 34
+ペイロード構築ノード: tracks形式に変更
+Convert Payload to Tracksノード: tracks形式に対応
+
+✅ Execution 1045: 動画URL取得からダウンロードまで完全に成功
+- Get Result (Approach 2): 422エラーが発生せず、動画URL取得成功
+- Extract Video URL (Attempt 2): 動画URL抽出成功
+- Merge Video URL: 動画URL統合成功
+- Download Video: 動画ダウンロード成功
+動画URL: https://v3b.fal.media/files/b/zebra/Adlk-j4GPHB6VGNv0PKgY_output.mp4
+実行時間: 24.59秒
+```
+
+**期待される動作**:
+- `tracks`形式のペイロードを使用することで、`response_url`にGETリクエストを送信した際に422エラーが発生しない
+- 動画URLが正しく取得できる
+- 動画URL取得からダウンロードまでのフローが完全に動作する
+
+### ベストプラクティス
+
+**FAL API `/compose`エンドポイントのペイロード形式**:
+- ✅ **`tracks`形式を使用**: `response_url`にGETリクエストを送信する際に正しいレスポンスが返る
+- ✅ **`keyframes`の`timestamp`と`duration`を正確に計算**: 累積時間を計算して`timestamp`を設定
+- ✅ **`duration`を元の入力データから取得**: デフォルト値（5秒）を使用する場合は注意
+- ❌ **`inputs`形式を使用**: `response_url`にGETリクエストを送信する際に422エラーが発生する
+
+**FAL API `/compose`エンドポイントのペイロード構造（tracks形式）**:
+```json
+{
+  "tracks": [{
+    "id": "1",
+    "type": "video",
+    "keyframes": [
+      {
+        "url": "https://example.com/video1.mp4",
+        "timestamp": 0,
+        "duration": 3
+      },
+      {
+        "url": "https://example.com/video2.mp4",
+        "timestamp": 3,
+        "duration": 10
+      }
+    ]
+  }]
+}
+```
+
+**動画URL取得のフロー（成功パターン）**:
+1. `Submit to FAL` → `tracks`形式のペイロードを送信
+2. `Fetch Status` → ステータスをポーリング
+3. `Extract Video URL (Attempt 1)` → ステータスレスポンスから動画URLを抽出（通常は失敗）
+4. `Get Result (Approach 2)` → `response_url`にGETリクエストを送信（`tracks`形式により成功）
+5. `Extract Video URL (Attempt 2)` → レスポンスから動画URLを抽出
+6. `Merge Video URL` → 動画URLを統合
+7. `Download Video` → 動画をダウンロード
+
+**エラーハンドリング**:
+- `Get Result (Approach 2)`で422エラーが発生した場合、`neverError: true`を設定して処理を続行
+- 複数のアプローチ（Attempt 1, 2, 3, 4）を実装して、いずれかが成功するようにする
+- `Merge Video URL`で詳細なエラーメッセージを返す
+
+---
+
 ## 更新履歴
 
 | 日付 | 更新内容 | 担当 |
@@ -1076,6 +1285,7 @@ Download Image ノード: 複数のレスポンス形式に対応
 | 2025-11-08 | 問題7追加（Check Retry Limitノードの接続が逆） | AI Assistant |
 | 2025-11-08 | 問題8追加（Get Image Result URLノードのHTTPメソッドエラー） | AI Assistant |
 | 2025-11-08 | 問題9追加（Get Image Result URLノードでresponse_urlが取得できない問題） | AI Assistant |
+| 2025-11-09 | 問題10追加（FAL API `/compose`エンドポイントで`response_url`にGETリクエストを送信すると422エラーが発生） | AI Assistant |
 
 ---
 

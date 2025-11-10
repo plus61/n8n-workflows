@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements-server.txt
 # アプリケーションコピー
 COPY render_server.py /app/
 COPY render_video_ffmpeg.py /app/
+COPY phase4c_ffmpeg_concat.py /app/
 COPY templates/ /app/templates/
 
 # 実行権限

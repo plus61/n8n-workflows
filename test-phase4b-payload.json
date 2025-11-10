@@ -1,0 +1,62 @@
+{
+  "script_id": "2a068d5c-2986-81a3-ab0c-ff0bc1e4ebb9",
+  "slides_metadata": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "motion_prompt": "",
+      "filename": "slide_1_hook.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=1SiMx4hK09e4bP6UedjDNCqmspZT6kQi7",
+      "drive_file_id": "1SiMx4hK09e4bP6UedjDNCqmspZT6kQi7"
+    },
+    {
+      "section": "intro",
+      "duration": 10,
+      "motion_prompt": "",
+      "filename": "slide_2_intro.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=1dxqKSrVNEx5LcxfQAKkNR5Yy1QKww0Hh",
+      "drive_file_id": "1dxqKSrVNEx5LcxfQAKkNR5Yy1QKww0Hh"
+    },
+    {
+      "section": "point1",
+      "duration": 13,
+      "motion_prompt": "",
+      "filename": "slide_3_point1.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=1SlHpIn0-RnmfOr7geMt58j46fpg_ywdR",
+      "drive_file_id": "1SlHpIn0-RnmfOr7geMt58j46fpg_ywdR"
+    },
+    {
+      "section": "point2",
+      "duration": 13,
+      "motion_prompt": "",
+      "filename": "slide_4_point2.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=10FRmE6vWIWhRl5RobnRRfQURTK72xio8",
+      "drive_file_id": "10FRmE6vWIWhRl5RobnRRfQURTK72xio8"
+    },
+    {
+      "section": "point3",
+      "duration": 14,
+      "motion_prompt": "",
+      "filename": "slide_5_point3.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=1D_OZSIwGGlK5skHntM0qUAm8oLOYCeru",
+      "drive_file_id": "1D_OZSIwGGlK5skHntM0qUAm8oLOYCeru"
+    },
+    {
+      "section": "summary",
+      "duration": 20,
+      "motion_prompt": "",
+      "filename": "slide_6_summary.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=10DW2cLyimWATGNwFsd0tgEZ0rzC7Np7D",
+      "drive_file_id": "10DW2cLyimWATGNwFsd0tgEZ0rzC7Np7D"
+    },
+    {
+      "section": "cta",
+      "duration": 7,
+      "motion_prompt": "",
+      "filename": "slide_7_cta.png",
+      "image_url": "https://drive.google.com/uc?export=download&id=1r7Y-UvCtL6uaomy1MCsNibAz18POhldl",
+      "drive_file_id": "1r7Y-UvCtL6uaomy1MCsNibAz18POhldl"
+    }
+  ],
+  "slides_count": 7
+}

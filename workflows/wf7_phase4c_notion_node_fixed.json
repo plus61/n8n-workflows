@@ -1,0 +1,169 @@
+{
+  "name": "WF7 Phase4c - Notion Error Fix (2 Nodes)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign1",
+              "name": "script_id",
+              "value": "unknown",
+              "type": "string"
+            },
+            {
+              "id": "assign2",
+              "name": "webViewLink",
+              "value": "https://drive.google.com/file/d/1I7U4p2pqXqT4VWAZk71UqFJGKPrrwfic/view?usp=drivesdk",
+              "type": "string"
+            },
+            {
+              "id": "assign3",
+              "name": "video_url",
+              "value": "https://v3b.fal.media/files/b/zebra/Adlk-j4GPHB6VGNv0PKgY_output.mp4",
+              "type": "string"
+            },
+            {
+              "id": "assign4",
+              "name": "filename",
+              "value": "WF7_Final_unknown_20251109T0540.mp4",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-upload-output",
+      "name": "Set - Upload to Google Drive Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ],
+      "notes": "Upload to Google Driveノードの出力データを模擬（実行1053の実際の出力データ）"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.script_id || $('ペイロード構築').item.json.script_id }}"
+        },
+        "simple": false,
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status",
+              "type": "select",
+              "selectValue": "completed"
+            },
+            {
+              "key": "Final Video URL",
+              "type": "url",
+              "urlValue": "={{ $json.webViewLink || $json.video_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-notion",
+      "name": "Update Notion DB",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "y89xQdP2gCTcdyup",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Notion DBのステータスを'completed'に更新、final_video_url記録。script_idが'unknown'の場合、エラーが発生する（修正前の状態）",
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: $json.notion_update_status !== 'error', script_id: $json.script_id, notion_update_status: $json.notion_update_status || 'executed', webViewLink: $json.webViewLink }, null, 2) }}",
+        "options": {}
+      },
+      "id": "respond-result",
+      "name": "Respond - Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "notes": "実行結果を返す（テスト用）"
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Set - Upload to Google Drive Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Upload to Google Drive Output": {
+      "main": [
+        [
+          {
+            "node": "Update Notion DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Notion DB": {
+      "main": [
+        [
+          {
+            "node": "Respond - Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {
+    "When clicking 'Test workflow'": [
+      {
+        "json": {
+          "script_id": "unknown",
+          "webViewLink": "https://drive.google.com/file/d/1I7U4p2pqXqT4VWAZk71UqFJGKPrrwfic/view?usp=drivesdk",
+          "video_url": "https://v3b.fal.media/files/b/zebra/Adlk-j4GPHB6VGNv0PKgY_output.mp4",
+          "filename": "WF7_Final_unknown_20251109T0540.mp4"
+        }
+      }
+    ]
+  }
+}

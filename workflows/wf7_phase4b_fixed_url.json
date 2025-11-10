@@ -50,7 +50,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 現在処理中のスライド\nconst slide = $input.first().json;\nconst scriptId = $('Code - Validate Input').item.json.script_id;\n\n// Google Drive URLをGoogle Drive API v3形式に変換\n// 形式: https://drive.google.com/uc?export=download&id=FILE_ID\n// → https://www.googleapis.com/drive/v3/files/FILE_ID?alt=media\nlet imageUrl = slide.image_url;\n\nif (imageUrl.includes('drive.google.com')) {\n  // FILE_IDを抽出\n  const fileIdMatch = imageUrl.match(/[?&]id=([^&]+)/) || imageUrl.match(/\\/d\\/([^\\/]+)/);\n  if (fileIdMatch && fileIdMatch[1]) {\n    const fileId = fileIdMatch[1];\n    // Google Drive API v3形式に変換（公開ファイルの直接アクセス）\n    imageUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;\n  }\n}\n\n// FAL Compose APIペイロード構築\nconst payload = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: [\n        {\n          url: imageUrl,\n          timestamp: 0,\n          duration: slide.duration\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    fal_payload: JSON.stringify(payload),\n    slide_metadata: slide,\n    script_id: scriptId,\n    slide_index: $itemIndex,\n    converted_image_url: imageUrl  // デバッグ用\n  }\n};"
+        "jsCode": "// 現在処理中のスライド\nconst slide = $input.first().json;\nconst scriptId = $('Code - Validate Input').item.json.script_id;\n\n// Google Drive URLをFAL API互換形式に変換\n// 形式: https://drive.google.com/uc?export=download&id=FILE_ID\n// → https://drive.google.com/thumbnail?id=FILE_ID&sz=w2000\nlet imageUrl = slide.image_url;\n\nif (imageUrl.includes('drive.google.com')) {\n  // FILE_IDを抽出\n  const fileIdMatch = imageUrl.match(/[?&]id=([^&]+)/) || imageUrl.match(/\\/d\\/([^\\/]+)/);\n  if (fileIdMatch && fileIdMatch[1]) {\n    const fileId = fileIdMatch[1];\n    // Google Driveのサムネイル形式に変換（直接画像アクセス可能）\n    imageUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w2000`;\n  }\n}\n\n// FAL Compose APIペイロード構築\nconst payload = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: [\n        {\n          url: imageUrl,\n          timestamp: 0,\n          duration: slide.duration\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    fal_payload: JSON.stringify(payload),\n    slide_metadata: slide,\n    script_id: scriptId,\n    slide_index: $itemIndex,\n    converted_image_url: imageUrl  // デバッグ用\n  }\n};"
       },
       "id": "prepare-fal-payload-node",
       "name": "Code - Prepare FAL Payload",
@@ -141,10 +141,10 @@
       "parameters": {
         "conditions": {
           "options": {
-            "caseSensitive": true,
+            "version": 2,
             "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
+            "caseSensitive": true,
+            "typeValidation": "strict"
           },
           "conditions": [
             {
@@ -249,10 +249,10 @@
       "parameters": {
         "conditions": {
           "options": {
-            "caseSensitive": true,
+            "version": 2,
             "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
+            "caseSensitive": true,
+            "typeValidation": "strict"
           },
           "conditions": [
             {
@@ -320,191 +320,63 @@
   ],
   "connections": {
     "Webhook - Phase 4b Start": {
-      "main": [
-        [
-          {
-            "node": "Execute Workflow Trigger",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Execute Workflow Trigger", "type": "main", "index": 0}]]
     },
     "Execute Workflow Trigger": {
-      "main": [
-        [
-          {
-            "node": "Code - Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Code - Validate Input", "type": "main", "index": 0}]]
     },
     "Code - Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Split Out - Slides",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Split Out - Slides", "type": "main", "index": 0}]]
     },
     "Split Out - Slides": {
-      "main": [
-        [
-          {
-            "node": "Code - Prepare FAL Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Code - Prepare FAL Payload", "type": "main", "index": 0}]]
     },
     "Code - Prepare FAL Payload": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request - Submit to FAL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "HTTP Request - Submit to FAL", "type": "main", "index": 0}]]
     },
     "HTTP Request - Submit to FAL": {
-      "main": [
-        [
-          {
-            "node": "Wait - 5 Seconds",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Wait - 5 Seconds", "type": "main", "index": 0}]]
     },
     "Wait - 5 Seconds": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request - Check Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "HTTP Request - Check Status", "type": "main", "index": 0}]]
     },
     "HTTP Request - Check Status": {
-      "main": [
-        [
-          {
-            "node": "IF - Render Completed?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "IF - Render Completed?", "type": "main", "index": 0}]]
     },
     "IF - Render Completed?": {
       "main": [
-        [
-          {
-            "node": "HTTP Request - Get Result",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Set - Retry Counter",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "HTTP Request - Get Result", "type": "main", "index": 0}],
+        [{"node": "Set - Retry Counter", "type": "main", "index": 0}]
       ]
     },
     "HTTP Request - Get Result": {
-      "main": [
-        [
-          {
-            "node": "Code - Build Video Metadata",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Code - Build Video Metadata", "type": "main", "index": 0}]]
     },
     "Code - Build Video Metadata": {
-      "main": [
-        [
-          {
-            "node": "Code - Build Final Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Code - Build Final Response", "type": "main", "index": 0}]]
     },
     "Set - Retry Counter": {
-      "main": [
-        [
-          {
-            "node": "IF - Check Retry Limit",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "IF - Check Retry Limit", "type": "main", "index": 0}]]
     },
     "IF - Check Retry Limit": {
       "main": [
-        [
-          {
-            "node": "Wait - Before Retry",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Code - Timeout Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Wait - Before Retry", "type": "main", "index": 0}],
+        [{"node": "Code - Timeout Error", "type": "main", "index": 0}]
       ]
     },
     "Wait - Before Retry": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request - Check Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "HTTP Request - Check Status", "type": "main", "index": 0}]]
     },
     "Code - Build Final Response": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook - Success",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Respond to Webhook - Success", "type": "main", "index": 0}]]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
   "staticData": null,
-  "tags": [],
-  "triggerCount": 1,
-  "updatedAt": "2025-11-08T06:00:00.000Z",
-  "versionId": "phase4b-v1-0"
+  "meta": null,
+  "pinData": null,
+  "versionId": "updated-url-format",
+  "tags": []
 }

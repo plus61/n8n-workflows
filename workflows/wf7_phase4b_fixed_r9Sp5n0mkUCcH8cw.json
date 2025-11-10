@@ -1,5 +1,5 @@
 {
-  "name": "WF7 Phase4 - V3 Fixed_final",
+  "name": "WF7 Phase4 - V3 with Execute Sub-workflow Phase4b",
   "nodes": [
     {
       "parameters": {
@@ -284,19 +284,34 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4b-image-to-video",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"script_id\": $('Set - Phase4a Payload New').item.json.script_id,\n  \"slides_metadata\": $('Set - Phase4a Payload New').item.json.slides_metadata\n} }}",
-        "options": {
-          "timeout": 600000
-        }
+        "source": "database",
+        "workflowId": "wHaKi98mTlUvFIOR",
+        "mode": "once",
+        "waitForSubWorkflow": true,
+        "workflowInputs": {
+          "mapping": {
+            "assignments": [
+              {
+                "id": "script_id",
+                "name": "script_id",
+                "value": "={{ $('Set - Phase4a Payload New').item.json.script_id }}",
+                "type": "string"
+              },
+              {
+                "id": "slides_metadata",
+                "name": "slides_metadata",
+                "value": "={{ $('Set - Phase4a Payload New').item.json.slides_metadata }}",
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "options": {}
       },
       "id": "729c6f85-ff57-43f5-bd20-f686281e14c7",
-      "name": "HTTP Request - Call Phase4b",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "Execute Sub-workflow - Phase4b",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
       "position": [
         256,
         -416
@@ -1050,7 +1065,7 @@
       "parameters": {
         "language": "python",
         "mode": "runOnceForAllItems",
-        "pythonCode": "import os\nimport tempfile\nimport time\nimport subprocess\nimport shutil\n\ndef download_video(video_url, output_path):\n    try:\n        # Google Drive URLの変換\n        if \"drive.google.com\" in video_url:\n            if \"/file/d/\" in video_url:\n                file_id = video_url.split(\"/file/d/\")[1].split(\"/\")[0]\n                video_url = f\"https://drive.google.com/uc?export=download&id={file_id}\"\n        \n        # 出力ディレクトリが存在することを確認\n        output_dir = os.path.dirname(output_path)\n        if not os.path.exists(output_dir):\n            os.makedirs(output_dir, exist_ok=True)\n        \n        # curlコマンドが利用可能か確認\n        curl_path = shutil.which('curl')\n        if not curl_path:\n            raise RuntimeError(f\"curlコマンドが見つかりません。システムPATHを確認してください。\")\n        \n        # curlを使用してダウンロード\n        try:\n            cmd = [curl_path, '-L', '--fail', '--silent', '--show-error', '-o', output_path, video_url]\n            result = subprocess.run(\n                cmd,\n                capture_output=True,\n                text=True,\n                timeout=120\n            )\n            \n            # curlのエラーを確認\n            if result.returncode != 0:\n                error_msg = f\"curl失敗: returncode={result.returncode}\"\n                if result.stderr:\n                    error_msg += f\", stderr={result.stderr[:500]}\"\n                if result.stdout:\n                    error_msg += f\", stdout={result.stdout[:500]}\"\n                raise RuntimeError(f\"{error_msg}, url={video_url}\")\n            \n            # ファイルの存在とサイズを確認\n            if not os.path.exists(output_path):\n                raise RuntimeError(f\"ファイルが作成されませんでした: {output_path}, url={video_url}\")\n            \n            file_size = os.path.getsize(output_path)\n            if file_size == 0:\n                raise RuntimeError(f\"ファイルサイズが0: {output_path}, url={video_url}\")\n            \n            return True\n                \n        except subprocess.TimeoutExpired:\n            raise RuntimeError(f\"ダウンロードタイムアウト（120秒経過）: {video_url}\")\n        except FileNotFoundError:\n            raise RuntimeError(f\"curlコマンドが見つかりません: {curl_path}\")\n        except Exception as e:\n            raise RuntimeError(f\"curl実行エラー: {str(e)}, url={video_url}\")\n            \n    except Exception as e:\n        # エラーを再発生させて、詳細なメッセージを含める\n        raise RuntimeError(f\"動画ダウンロード失敗: {str(e)}\")\n\ndef create_concat_file(video_paths, concat_file_path):\n    with open(concat_file_path, 'w', encoding='utf-8') as f:\n        for video_path in video_paths:\n            f.write(f\"file '{video_path}'\\n\")\n\ndef concat_videos_with_ffmpeg(video_paths, output_path, timeout=600):\n    try:\n        concat_file = os.path.join(os.path.dirname(output_path), 'concat.txt')\n        create_concat_file(video_paths, concat_file)\n        cmd = [\n            'ffmpeg',\n            '-y',\n            '-safe', '0',\n            '-f', 'concat',\n            '-i', concat_file,\n            '-c', 'copy',\n            output_path\n        ]\n        result = subprocess.run(\n            cmd,\n            capture_output=True,\n            text=True,\n            timeout=timeout\n        )\n        if result.returncode == 0 and os.path.exists(output_path):\n            if os.path.exists(concat_file):\n                os.remove(concat_file)\n            return True\n        return False\n    except Exception as e:\n        return False\n\ninput_data = items[0]['json']\nscript_id = input_data.get('script_id', 'unknown')\nvideos_metadata = input_data.get('videos_metadata', [])\n\nif len(videos_metadata) != 7:\n    raise ValueError(f\"動画数が不正です。期待: 7本、実際: {len(videos_metadata)}本\")\n\ntemp_dir = tempfile.mkdtemp(prefix='wf7_phase4c_')\ndownloaded_paths = []\n\nfor i, video_meta in enumerate(videos_metadata, 1):\n    section = video_meta.get('section', f'video_{i}')\n    video_url = video_meta.get('video_url')\n    if not video_url:\n        raise ValueError(f\"動画URL未設定: section={section}\")\n    video_filename = f\"video_{i}_{section}.mp4\"\n    video_path = os.path.join(temp_dir, video_filename)\n    try:\n        download_video(video_url, video_path)\n    except Exception as e:\n        raise RuntimeError(f\"動画ダウンロード失敗: section={section}, url={video_url}, error={str(e)}\")\n    downloaded_paths.append(video_path)\n\noutput_filename = f\"final_video_{script_id}_{int(time.time())}.mp4\"\noutput_path = os.path.join(temp_dir, output_filename)\n\nif not concat_videos_with_ffmpeg(downloaded_paths, output_path):\n    raise RuntimeError(\"FFmpeg結合失敗\")\n\noutput_size = os.path.getsize(output_path)\ntotal_duration = sum(v.get('duration', 0) for v in videos_metadata)\n\nreturn [{\n    'json': {\n        'success': True,\n        'script_id': script_id,\n        'output_video_path': output_path,\n        'output_video_size': output_size,\n        'total_duration': total_duration,\n        'videos_count': len(videos_metadata),\n        'temp_dir': temp_dir,\n        'articleId': input_data.get('articleId')\n    }\n}]"
+        "pythonCode": "import os\nimport tempfile\nimport time\nimport subprocess\n\ndef download_video(video_url, output_path):\n    try:\n        # Google Drive URLの変換\n        if \"drive.google.com\" in video_url:\n            if \"/file/d/\" in video_url:\n                file_id = video_url.split(\"/file/d/\")[1].split(\"/\")[0]\n                video_url = f\"https://drive.google.com/uc?export=download&id={file_id}\"\n        \n        # 出力ディレクトリが存在することを確認\n        output_dir = os.path.dirname(output_path)\n        if not os.path.exists(output_dir):\n            os.makedirs(output_dir, exist_ok=True)\n        \n        # curlコマンドを直接使用（shutil.which()はPyodide環境でhttp.clientを使用するため避ける）\n        try:\n            cmd = ['curl', '-L', '--fail', '--silent', '--show-error', '-o', output_path, video_url]\n            result = subprocess.run(\n                cmd,\n                capture_output=True,\n                text=True,\n                timeout=120\n            )\n            \n            # curlのエラーを確認\n            if result.returncode != 0:\n                error_msg = f\"curl失敗: returncode={result.returncode}\"\n                if result.stderr:\n                    error_msg += f\", stderr={result.stderr[:500]}\"\n                if result.stdout:\n                    error_msg += f\", stdout={result.stdout[:500]}\"\n                raise RuntimeError(f\"{error_msg}, url={video_url}\")\n            \n            # ファイルの存在とサイズを確認\n            if not os.path.exists(output_path):\n                raise RuntimeError(f\"ファイルが作成されませんでした: {output_path}, url={video_url}\")\n            \n            file_size = os.path.getsize(output_path)\n            if file_size == 0:\n                raise RuntimeError(f\"ファイルサイズが0: {output_path}, url={video_url}\")\n            \n            return True\n                \n        except subprocess.TimeoutExpired:\n            raise RuntimeError(f\"ダウンロードタイムアウト（120秒経過）: {video_url}\")\n        except FileNotFoundError:\n            raise RuntimeError(f\"curlコマンドが見つかりません。システムPATHを確認してください。\")\n        except Exception as e:\n            raise RuntimeError(f\"curl実行エラー: {str(e)}, url={video_url}\")\n            \n    except Exception as e:\n        # エラーを再発生させて、詳細なメッセージを含める\n        raise RuntimeError(f\"動画ダウンロード失敗: {str(e)}\")\n\ndef create_concat_file(video_paths, concat_file_path):\n    with open(concat_file_path, 'w', encoding='utf-8') as f:\n        for video_path in video_paths:\n            f.write(f\"file '{video_path}'\\n\")\n\ndef concat_videos_with_ffmpeg(video_paths, output_path, timeout=600):\n    try:\n        concat_file = os.path.join(os.path.dirname(output_path), 'concat.txt')\n        create_concat_file(video_paths, concat_file)\n        cmd = [\n            'ffmpeg',\n            '-y',\n            '-safe', '0',\n            '-f', 'concat',\n            '-i', concat_file,\n            '-c', 'copy',\n            output_path\n        ]\n        result = subprocess.run(\n            cmd,\n            capture_output=True,\n            text=True,\n            timeout=timeout\n        )\n        if result.returncode == 0 and os.path.exists(output_path):\n            if os.path.exists(concat_file):\n                os.remove(concat_file)\n            return True\n        return False\n    except Exception as e:\n        return False\n\ninput_data = items[0]['json']\nscript_id = input_data.get('script_id', 'unknown')\nvideos_metadata = input_data.get('videos_metadata', [])\n\nif len(videos_metadata) != 7:\n    raise ValueError(f\"動画数が不正です。期待: 7本、実際: {len(videos_metadata)}本\")\n\ntemp_dir = tempfile.mkdtemp(prefix='wf7_phase4c_')\ndownloaded_paths = []\n\nfor i, video_meta in enumerate(videos_metadata, 1):\n    section = video_meta.get('section', f'video_{i}')\n    video_url = video_meta.get('video_url')\n    if not video_url:\n        raise ValueError(f\"動画URL未設定: section={section}\")\n    video_filename = f\"video_{i}_{section}.mp4\"\n    video_path = os.path.join(temp_dir, video_filename)\n    try:\n        download_video(video_url, video_path)\n    except Exception as e:\n        raise RuntimeError(f\"動画ダウンロード失敗: section={section}, url={video_url}, error={str(e)}\")\n    downloaded_paths.append(video_path)\n\noutput_filename = f\"final_video_{script_id}_{int(time.time())}.mp4\"\noutput_path = os.path.join(temp_dir, output_filename)\n\nif not concat_videos_with_ffmpeg(downloaded_paths, output_path):\n    raise RuntimeError(\"FFmpeg結合失敗\")\n\noutput_size = os.path.getsize(output_path)\ntotal_duration = sum(v.get('duration', 0) for v in videos_metadata)\n\nreturn [{\n    'json': {\n        'success': True,\n        'script_id': script_id,\n        'output_video_path': output_path,\n        'output_video_size': output_size,\n        'total_duration': total_duration,\n        'videos_count': len(videos_metadata),\n        'temp_dir': temp_dir,\n        'articleId': input_data.get('articleId')\n    }\n}]"
       },
       "id": "7a2b375b-c75a-4aaf-8c2d-7e0d1c0ba361",
       "name": "Code - Phase4c FFmpeg Concat",
@@ -1402,7 +1417,7 @@
       "main": [
         [
           {
-            "node": "HTTP Request - Call Phase4b",
+            "node": "Execute Sub-workflow - Phase4b",
             "type": "main",
             "index": 0
           }
@@ -1416,7 +1431,7 @@
         ]
       ]
     },
-    "HTTP Request - Call Phase4b": {
+    "Execute Sub-workflow - Phase4b": {
       "main": [
         [
           {

@@ -4,6 +4,33 @@
 
 ## 📚 ナレッジドキュメント一覧
 
+### [WF7 Phase3 & Phase4 トラブルシューティングガイド](./wf7-phase4-troubleshooting-guide.md)
+
+**作成日**: 2025-11-04  
+**最終更新**: 2025-11-09  
+**出典**: WF7 Phase3 & Phase4 ワークフロー構築・運用
+
+**主要トピック**:
+1. **Execute Commandノードのコマンド構築**
+   - 複数行コマンドの問題と1行化の方法
+   - `&&`で連結するパターン
+
+2. **Notion URL形式の問題**
+   - Railwayインスタンスの誤り
+   - プロトコル欠落の問題
+
+3. **FAL API統合**
+   - タイムアウト設定の不備
+   - Waitノードのwebhook待機問題
+   - リトライロジックの接続エラー
+   - `response_url`の正しい使用方法
+   - **`/compose`エンドポイントのペイロード形式（`inputs` vs `tracks`）** ⭐ NEW
+
+4. **動画URL取得の成功パターン** ⭐ NEW
+   - `tracks`形式のペイロードを使用した成功事例
+   - `response_url`にGETリクエストを送信する際の422エラー解決
+   - 動画URL取得からダウンロードまでの完全なフロー
+
 ### [n8nワークフロー構築ナレッジベース](./n8n-workflow-construction-knowledge.md)
 
 **作成日**: 2025-10-29

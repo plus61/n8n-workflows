@@ -251,12 +251,122 @@ await Promise.all(
 );
 ```
 
+## 🎬 FAL API統合
+
+### 1. `/compose`エンドポイントのペイロード形式
+
+**推奨: `tracks`形式を使用**
+
+FAL APIの`/compose`エンドポイントで動画を結合する際、`response_url`にGETリクエストを送信して結果を取得する場合、`tracks`形式のペイロードを使用する必要があります。
+
+**✅ 推奨パターン（tracks形式）**:
+```javascript
+// ペイロード構築ノード
+const videoUrls = $input.first().json.video_url || [];
+const originalInput = $('When clicking \'Test workflow\'').all();
+
+let cumulativeTime = 0;
+const keyframes = videoUrls.map((url, index) => {
+  const duration = originalInput[index]?.json?.duration || 5;
+  const timestamp = cumulativeTime;
+  cumulativeTime += duration;
+  
+  return {
+    url: url,
+    timestamp: timestamp,
+    duration: duration
+  };
+});
+
+const payload = {
+  tracks: [{
+    id: "1",
+    type: "video",
+    keyframes: keyframes
+  }]
+};
+
+return [{ json: payload }];
+```
+
+**❌ アンチパターン（inputs形式）**:
+```javascript
+// inputs形式はresponse_urlにGETリクエストを送信する際に422エラーが発生
+const payload = {
+  inputs: videoUrls.map(url => ({ type: "video", url: url })),
+  output_format: "mp4",
+  concat_method: "concat"
+};
+```
+
+**重要なポイント**:
+- `timestamp`は累積時間を計算（前の動画の終了時点）
+- `duration`は元の入力データから取得、またはデフォルト値（5秒）を使用
+- `response_url`にGETリクエストを送信する際、`tracks`形式が必要
+
+### 2. 動画URL取得のフロー
+
+**推奨: 複数のアプローチを実装**
+
+FAL APIから動画URLを取得する際、複数のアプローチを実装して、いずれかが成功するようにします。
+
+**成功パターン**:
+```
+1. Submit to FAL → tracks形式のペイロードを送信
+2. Fetch Status → ステータスをポーリング
+3. Extract Video URL (Attempt 1) → ステータスレスポンスから動画URLを抽出
+4. Get Result (Approach 2) → response_urlにGETリクエストを送信（tracks形式により成功）
+5. Extract Video URL (Attempt 2) → レスポンスから動画URLを抽出
+6. Merge Video URL → 動画URLを統合
+7. Download Video → 動画をダウンロード
+```
+
+**エラーハンドリング**:
+```javascript
+// Get Result (Approach 2)ノードの設定
+{
+  "options": {
+    "response": {
+      "response": {
+        "neverError": true  // 422エラーでも処理を続行
+      }
+    }
+  }
+}
+```
+
+### 3. タイムアウト設定
+
+**推奨: 適切なタイムアウト値を設定**
+
+FAL APIへのリクエストは時間がかかる場合があるため、適切なタイムアウト値を設定します。
+
+```javascript
+// Submit to FAL ノードの設定
+{
+  "options": {
+    "timeout": 300000  // 300秒（300000ミリ秒）
+  }
+}
+```
+
+**アンチパターン**:
+```javascript
+// ❌ タイムアウトが短すぎる（300msなど）
+{
+  "options": {
+    "timeout": 300  // 0.3秒では確実にタイムアウト
+  }
+}
+```
+
 ## 📚 参考リソース
 
 - [n8n公式ドキュメント](https://docs.n8n.io/)
 - [n8n Community Forum](https://community.n8n.io/)
 - [n8n Best Practices](https://docs.n8n.io/workflows/best-practices/)
+- [WF7 Phase3 & Phase4 トラブルシューティングガイド](./knowledge/wf7-phase4-troubleshooting-guide.md)
 
 ---
 
-最終更新: 2025-10-26
+最終更新: 2025-11-09

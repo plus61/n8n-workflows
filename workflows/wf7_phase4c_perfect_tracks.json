@@ -1,0 +1,45 @@
+{
+  "name": "WF7 Phase4c - Perfect Implementation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "phase4c-start",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 368]
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "video_url"
+            }
+          ]
+        },
+        "options": {
+          "mergeLists": true
+        }
+      },
+      "id": "aggregate-videos",
+      "name": "Aggregate Videos",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [464, 368],
+      "notes": "Phase4bの7本の動画URLを1つの配列に集約"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FAL FFmpeg API /compose endpoint payload construction (tracks format)\n// Phase4bと同じ形式を使用して、response_urlにGETリクエストを送信した際に正しいレスポンスが返るようにする\n\nconst inputData = $input.all();\nconst scriptId = inputData[0]?.json?.script_id || 'unknown';\n\nif (!inputData || inputData.length === 0) {\n  throw new Error('Input data is required');\n}\n\n// 入力データからvideo_urlとdurationを取得\n// Aggregate Videosノードの出力は、各アイテムのvideo_urlとdurationを含む\nlet cumulativeTime = 0;\nconst keyframes = inputData.map((item, index) => {\n  const videoUrl = item.json.video_url;\n  // duration情報が含まれている場合はそれを使用、なければデフォルト5秒\n  const duration = item.json.duration || 5;\n  const timestamp = cumulativeTime;\n  \n  // 次のタイムスタンプ用に累積時間を更新\n  cumulativeTime += duration;\n  \n  if (!videoUrl) {\n    throw new Error(`video_url is missing at index ${index}`);\n  }\n  \n  return {\n    url: videoUrl,\n    timestamp: timestamp,\n    duration: duration\n  };\n});\n\n// Phase4b形式（tracks）のペイロード\nconst payload = {\n  tracks: [{\n    id: \"1\",\n    type: \"video\",\n    keyframes: keyframes\n  }]\n};\n\nreturn [{ json: { ...payload, script_id: scriptId } }];"
+      },
+      "id": "payload-builder",
+      "name": "ペイロード構築",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 368],
+      "notes": "FAL FFmpeg API /compose用のペイロードを構築（tracks形式）"
+    }
+  ]
+}
+

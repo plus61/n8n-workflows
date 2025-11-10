@@ -205,9 +205,52 @@ mkdir experiments/2025-11-05-elevenlabs-test
 
 ## 🔌 MCP統合
 
-Claude Code / Cursorから直接このリポジトリにアクセスできます。
+Claude Code / Cursorから直接このリポジトリとn8nインスタンスにアクセスできます。
 
-### Claude Desktop設定
+### ⚡ n8n MCP（推奨）- ワークフロー直接操作
+
+**n8n MCPを使用すると、Cursorから直接n8nのワークフローを操作できます。**
+
+#### クイックセットアップ
+
+1. **環境変数の設定**
+```bash
+export N8N_API_URL="https://n8n-python-production-344b.up.railway.app"
+export N8N_API_KEY="your-api-key-here"
+```
+
+2. **設定ファイルの確認**
+   - プロジェクト共通設定: `.mcp/config.json` ← **推奨**
+   - Cursor専用設定: `.cursor/mcp.json`
+
+3. **動作確認**
+```javascript
+mcp_n8n-mcp_n8n_health_check()
+```
+
+#### 詳細ドキュメント
+
+- 📚 **[n8n MCP クイックリファレンス](docs/mcp-n8n-quick-reference.md)** - 30秒で動作確認
+- 📖 **[n8n MCP 動作状態ドキュメント](docs/mcp-n8n-working-state-documentation.md)** - 詳細な設定とトラブルシューティング
+- 🗂️ **[n8n MCP ドキュメントインデックス](docs/mcp-n8n-index.md)** - すべてのドキュメントへのナビゲーション
+- 🔧 **[.mcp/README.md](.mcp/README.md)** - MCP設定ディレクトリの説明
+- 💻 **[.cursor/MCP_SETUP.md](.cursor/MCP_SETUP.md)** - CursorでのMCP設定ガイド
+
+#### 利用可能な機能
+
+- ✅ ワークフローの作成・更新・削除
+- ✅ ワークフローの取得・検証
+- ✅ 実行履歴の確認
+- ✅ ノード情報の検索
+- ✅ テンプレートの検索・取得
+
+---
+
+### 📚 リポジトリドキュメントアクセス（gitmcp.io）
+
+Claude Code / Cursorから直接このリポジトリのドキュメントにアクセスできます。
+
+#### Claude Desktop設定
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`に追加:
 
@@ -222,7 +265,7 @@ Claude Code / Cursorから直接このリポジトリにアクセスできます
 }
 ```
 
-### Cursor設定
+#### Cursor設定
 
 `.cursor/mcp.json`に追加:
 
@@ -237,7 +280,7 @@ Claude Code / Cursorから直接このリポジトリにアクセスできます
 }
 ```
 
-### 使用例
+#### 使用例
 
 Claude / Cursorで以下のように質問できます:
 

@@ -16,11 +16,13 @@ Phase4aの7枚画像生成機能の実装が完了しました。
 ### 実装内容
 
 - ✅ Code Node（Python）: 7枚のスライド画像を生成
-- ✅ Split Outノード: 7つのアイテムに分割
 - ✅ Code Node（JavaScript）: Base64→Binary変換
 - ✅ Google Drive Upload: 7枚の画像をアップロード
+- ✅ Code Node（JavaScript）: Google Driveレスポンスとメタデータをマージ
 - ✅ Aggregateノード: 7枚の結果を統合
 - ✅ Setノード: Phase4a Payloadを設定
+
+**重要**: Split Outノードは使用していません。Code Nodeが配列を返すと、n8nが自動的に各要素を個別のアイテムとして処理するため、Split Outは不要です。n8n 1.40以降では、Split Outノードを使用するとアイテムが0～1件に潰れる既知の不具合があるため、直列接続のみを使用しています。
 
 ### 次のアクション
 
@@ -66,27 +68,32 @@ Phase4aの7枚画像生成機能の実装が完了しました。
 
 **現在のワークフロー**（`wf7_phase4_v3.json`）では、`データ統合`ノードが`scriptData`を含むため、パターン2が適用されます。
 
-### Step 2: Split Outノードを追加
+### Step 2: Split Outノードは使用しない（重要）
 
-1. `Code - Generate Slides with Pillow`ノードの後に新しいノードを追加
-2. ノードタイプ: **Split Out** を選択
-3. ノード名: `Split Out - Individual Slides`
+**重要**: Split Outノードは使用しません。
 
-#### Split Outノードの設定
+- `Code - Generate Slides with Pillow`が配列（7枚のスライド）を返すと、n8nが自動的に各要素を個別のアイテムとして処理します
+- そのため、`Code - Generate Slides with Pillow`から`Code - Convert to Binary`へ直接接続します
+- **n8n 1.40以降の既知の不具合**: Split Outノードを使用すると、アイテムが0～1件に潰れる問題が発生します
+- この問題を回避するため、Split Outノードを一切使用せず、直列接続のみで処理します
 
-**重要**: Code Nodeが配列を返すため、Split Outノードは**設定不要**です。n8nが自動的に配列を個別アイテムに分割します。
-
-**オプション設定**（必要に応じて）:
-- **Field to Split Out**: 設定不要（デフォルトで配列全体が分割される）
-- **Include**: `allFields`（デフォルト）
-
-**注意**: Code Nodeが7つのスライドオブジェクトの配列を返すため、Split Outノードは自動的に7つのアイテムに分割します。
+**接続構成**:
+```
+Code - Generate Slides with Pillow 
+  → Code - Convert to Binary 
+  → Google Drive - Upload Slide Image 
+  → Code - Merge Slide Metadata 
+  → Aggregate - Combine All Slides 
+  → Set - Phase 4b Input Data
+```
 
 ### Step 3: Code Node（Base64→Binary変換）を追加
 
-1. `Split Out - Individual Slides`ノードの後に新しいノードを追加
+1. `Code - Generate Slides with Pillow`ノードの後に新しいノードを追加（**Split Outを挟まない**）
 2. ノードタイプ: **Code** を選択
 3. ノード名: `Code - Convert to Binary`
+
+**重要**: `Code - Generate Slides with Pillow`が配列を返すため、n8nが自動的に各要素を個別のアイテムとして処理します。Split Outノードは使用しません。
 
 #### Code Nodeの設定
 
@@ -143,9 +150,37 @@ return {
 
 **Credentials**: 既存のGoogle Drive認証情報を使用（`Google Drive account`）
 
-### Step 5: Aggregateノードを追加
+### Step 5: Code Node（メタデータマージ）を追加
 
 1. `Google Drive - Upload Slide Image`ノードの後に新しいノードを追加
+2. ノードタイプ: **Code** を選択
+3. ノード名: `Code - Merge Slide Metadata`
+
+#### Code Nodeの設定
+
+**Language**: JavaScript
+
+**JavaScript Code**:
+```javascript
+// Google Driveアップロードのレスポンスとスライドメタデータをマージ
+const driveData = $input.first().json;
+const slideMetadata = $('Code - Convert to Binary').item.json;
+
+return {
+  json: {
+    section: slideMetadata.section,
+    duration: slideMetadata.duration,
+    motion_prompt: slideMetadata.motion_prompt,
+    filename: slideMetadata.filename,
+    image_url: `https://drive.google.com/uc?export=download&id=${driveData.id}`,
+    drive_file_id: driveData.id
+  }
+};
+```
+
+### Step 6: Aggregateノードを追加
+
+1. `Code - Merge Slide Metadata`ノードの後に新しいノードを追加
 2. ノードタイプ: **Aggregate** を選択
 3. ノード名: `Aggregate - Combine All Slides`
 
@@ -154,104 +189,86 @@ return {
 - **Aggregate**: `aggregateAllItemData`
 - **Options**: デフォルトのまま
 
-### Step 6: Setノードを追加（Phase4a Payload）
+### Step 7: Setノードを追加（Phase4a Payload）
 
 1. `Aggregate - Combine All Slides`ノードの後に新しいノードを追加
 2. ノードタイプ: **Set** を選択
-3. ノード名: `Set - Phase4a Payload`
+3. ノード名: `Set - Phase 4b Input Data`
 
 #### Setノードの設定
 
 **Assignments**に以下のフィールドを追加:
 
 1. **script_id** (String)
-   - Value: `={{ $('データ統合').item.json.notionPageId }}`
+   - Value: `={{ $('Notion - Get Script Data').item.json.id }}`
 
 2. **slides_metadata** (Array)
-   - Value: 
-   ```javascript
-   ={{ $json.aggregatedData.map(item => ({
-     section: item.section || item.json.section,
-     duration: item.duration || item.json.duration,
-     image_url: 'https://drive.google.com/uc?export=download&id=' + (item.id || item.json.id),
-     motion_prompt: item.motion_prompt || item.json.motion_prompt,
-     drive_file_id: item.id || item.json.id,
-     filename: item.filename || item.json.filename
-   })) }}
-   ```
+   - Value: `={{ $json.data }}`
 
 3. **slides_count** (Number)
-   - Value: `={{ $json.aggregatedData.length }}`
+   - Value: `={{ $json.data.length }}`
 
-4. **phase4a_success** (Boolean)
-   - Value: `={{ $json.aggregatedData.length === 7 }}`
+**注意**: Aggregateノードの出力は`$json.data`に格納されます。`Code - Merge Slide Metadata`ノードで既に必要なメタデータをマージしているため、そのまま使用できます。
 
-**注意**: Google Drive Uploadノードの出力構造に応じて、`item.json.id`または`item.id`を使用してください。通常は`item.json.id`がGoogle DriveファイルIDです。
+### Step 8: 接続の更新
 
-### Step 7: 接続の更新
-
-**重要**: 現在のワークフロー（`wf7_phase4_v3.json`）には「HTTP Request - Call Phase4a」ノードが存在しないため、接続の削除は不要です。
+**重要**: Split Outノードは使用しません。直列接続のみで処理します。
 
 **接続手順**:
 
-1. **既存接続の確認**
-   - 「データ統合」→「Split Out」（assetsData用）の接続を**保持**
-   - この接続は既存のアセット処理用のため、削除しない
-
-2. **Phase4aパスの接続追加**
-   - 「データ統合」→「Code - Generate Slides with Pillow」を接続
-   - 「Code - Generate Slides with Pillow」→「Split Out - Individual Slides」を接続
-   - 「Split Out - Individual Slides」→「Code - Convert to Binary」を接続
+1. **Phase4aパスの接続（直列接続）**
+   - 「Notion - Get Script Data」→「Code - Generate Slides with Pillow」を接続
+   - 「Code - Generate Slides with Pillow」→「Code - Convert to Binary」を接続（**Split Outを挟まない**）
    - 「Code - Convert to Binary」→「Google Drive - Upload Slide Image」を接続
-   - 「Google Drive - Upload Slide Image」→「Aggregate - Combine All Slides」を接続
-   - 「Aggregate - Combine All Slides」→「Set - Phase4a Payload」を接続
+   - 「Google Drive - Upload Slide Image」→「Code - Merge Slide Metadata」を接続
+   - 「Code - Merge Slide Metadata」→「Aggregate - Combine All Slides」を接続
+   - 「Aggregate - Combine All Slides」→「Set - Phase 4b Input Data」を接続
 
-3. **後続処理への接続**
-   - 「Set - Phase4a Payload」→「Split Out」（既存のassetsData用）を接続
-   - または、Phase4b処理へ接続（Phase4b実装時）
+2. **後続処理への接続**
+   - 「Set - Phase 4b Input Data」→ Phase4b処理へ接続（Phase4b実装時）
+   - または、Webhookレスポンスノードへ接続
 
-**注意**: 「データ統合」ノードから2つのパスが分岐します:
-- Phase4aパス: スライド画像生成用
-- 既存パス: assetsData処理用（変更なし）
+**接続構成の説明**:
+- `Code - Generate Slides with Pillow`が配列（7枚のスライド）を返すと、n8nが自動的に各要素を個別のアイテムとして処理します
+- そのため、Split Outノードは不要です
+- n8n 1.40以降では、Split Outノードを使用するとアイテムが0～1件に潰れる不具合があるため、直列接続のみを使用します
 
-### Step 8: IFノードの条件を更新（オプション）
+### Step 9: Webhookレスポンスノードを追加（オプション）
 
-**重要**: 現在のワークフロー（`wf7_phase4_v3.json`）には「IF - Phase4a Success Check」ノードが存在しないため、このステップは**オプション**です。
+**重要**: このステップは**オプション**です。Webhook経由でワークフローを呼び出す場合は、レスポンスノードを追加してください。
 
-Phase4aの成功チェックが必要な場合は、以下のノードを追加してください:
+1. **Respond to Webhookノードを追加**
+   - 「Set - Phase 4b Input Data」ノードの後に新しいノードを追加
+   - ノードタイプ: **Respond to Webhook** を選択
+   - ノード名: `Respond to Webhook - Success`
 
-1. **IFノードを追加**
-   - 「Set - Phase4a Payload」ノードの後に新しいノードを追加
-   - ノードタイプ: **IF** を選択
-   - ノード名: `IF - Phase4a Success Check`
-
-2. **IFノードの条件設定**
-   - **条件1**: `phase4a_success` が `true` である
-     - Left Value: `={{ $json.phase4a_success }}`
-     - Operation: `equals`
-     - Right Value: `true`
-   - **条件2**: `slides_count` が `7` である
-     - Left Value: `={{ $json.slides_count }}`
-     - Operation: `equals`
-     - Right Value: `7`
-   - **Combinator**: `AND`
+2. **Respond to Webhookノードの設定**
+   - **Respond With**: `JSON`
+   - **Response Body**:
+   ```javascript
+   ={{ {
+     success: true,
+     script_id: $json.script_id,
+     slides_generated: $json.slides_count,
+     google_drive_urls: $json.slides_metadata.map(s => s.image_url || s.google_drive_url),
+     slides_metadata: $json.slides_metadata
+   } }}
+   ```
 
 3. **接続設定**
-   - 「Set - Phase4a Payload」→「IF - Phase4a Success Check」を接続
-   - 「IF - Phase4a Success Check」→ 後続処理（成功時）
-   - 「IF - Phase4a Success Check」→ エラーハンドリング（失敗時）
-
-**注意**: Phase4aのエラーハンドリングが必要な場合は、失敗時のパスにエラーレスポンスノードを追加してください。
+   - 「Set - Phase 4b Input Data」→「Respond to Webhook - Success」を接続
 
 ---
 
 ## ✅ 確認事項
 
 1. Code Nodeが7枚のスライドを生成しているか確認
-2. Split Outノードが7つのアイテムに分割しているか確認
-3. Google Driveに7枚の画像がアップロードされているか確認
-4. Aggregateノードが7枚の結果を統合しているか確認
-5. Setノードが正しい形式でデータを設定しているか確認
+2. **Split Outノードが使用されていないことを確認**（n8n 1.40以降の不具合回避のため）
+3. Code - Convert to Binaryノードが7つのアイテムを処理しているか確認
+4. Google Driveに7枚の画像がアップロードされているか確認
+5. Code - Merge Slide Metadataノードが正しくメタデータをマージしているか確認
+6. Aggregateノードが7枚の結果を統合しているか確認
+7. Setノードが正しい形式でデータを設定しているか確認
 
 ---
 
@@ -266,12 +283,11 @@ Phase4aの成功チェックが必要な場合は、以下のノードを追加�
 2. **Code Nodeの出力確認**
    - [ ] Code Nodeが7枚のスライドを生成しているか確認
    - [ ] 各スライドに`section`, `duration`, `image_base64`, `filename`, `motion_prompt`, `text`が含まれているか確認
+   - [ ] **Split Outノードが使用されていないことを確認**（n8n 1.40以降の不具合回避のため）
 
-3. **Split Outノードの出力確認**
-   - [ ] Split Outノードが7つのアイテムに分割しているか確認
+3. **Code - Convert to Binaryノードの出力確認**
+   - [ ] Code Nodeが配列を返すため、n8nが自動的に7つのアイテムとして処理しているか確認
    - [ ] 各アイテムが正しいデータ構造を持っているか確認
-
-4. **Code - Convert to Binaryノードの出力確認**
    - [ ] Base64データがバイナリデータに変換されているか確認
    - [ ] バイナリプロパティ`data`が正しく設定されているか確認
 
@@ -280,30 +296,40 @@ Phase4aの成功チェックが必要な場合は、以下のノードを追加�
    - [ ] ファイル名が正しいか確認（`slide_1_hook.png`, `slide_2_intro.png`, など）
    - [ ] 各画像が正しいフォルダにアップロードされているか確認
 
-6. **Aggregateノードの出力確認**
-   - [ ] Aggregateノードが7枚の結果を統合しているか確認
-   - [ ] `aggregatedData`配列に7つのアイテムが含まれているか確認
+6. **Code - Merge Slide Metadataノードの出力確認**
+   - [ ] Google Driveレスポンスとメタデータが正しくマージされているか確認
+   - [ ] 各アイテムに`image_url`と`drive_file_id`が含まれているか確認
 
-7. **Setノードの出力確認**
+7. **Aggregateノードの出力確認**
+   - [ ] Aggregateノードが7枚の結果を統合しているか確認
+   - [ ] `data`配列に7つのアイテムが含まれているか確認
+
+8. **Setノードの出力確認**
    - [ ] `slides_count`が7であるか確認
-   - [ ] `phase4a_success`が`true`であるか確認
    - [ ] `slides_metadata`が正しい形式か確認
      - [ ] 各スライドに`section`, `duration`, `image_url`, `motion_prompt`, `drive_file_id`, `filename`が含まれているか
      - [ ] `image_url`が正しいGoogle Drive URL形式か確認
 
 ### テスト実行時の注意点
 
+- **Split Outノードは使用しない**: n8n 1.40以降では、Split Outノードを使用するとアイテムが0～1件に潰れる不具合があるため、Code Nodeが配列を返すと自動的に各要素が個別のアイテムとして処理されることを確認してください
 - **エラーハンドリング**: Code Nodeでエラーが発生した場合、空配列を返すため、後続ノードでエラーハンドリングが必要です
 - **Google DriveフォルダID**: 正しいフォルダIDが設定されているか確認してください
-- **データ構造**: `データ統合`ノードの出力構造に応じて、Code Nodeのエントリーポイントが正しく動作するか確認してください
+- **データ構造**: Notionノードの出力構造に応じて、Code Nodeのエントリーポイントが正しく動作するか確認してください
 
 ---
 
 ## 📝 注意事項
 
-1. **Google DriveフォルダID**: `WF7_SLIDES_FOLDER_ID`を実際のフォルダIDに置き換える必要があります
-2. **データ構造**: データ統合ノードの出力構造に応じて、Code Nodeのエントリーポイントを調整する必要がある場合があります
-3. **エラーハンドリング**: Code Nodeでエラーが発生した場合、空配列を返すため、後続ノードでエラーハンドリングが必要です
+1. **Split Outノードは使用しない**: n8n 1.40以降では、Split Outノードを使用するとアイテムが0～1件に潰れる既知の不具合があります。Code Nodeが配列を返すと、n8nが自動的に各要素を個別のアイテムとして処理するため、Split Outノードは不要です。
+
+2. **Google DriveフォルダID**: `WF7_SLIDES_FOLDER_ID`を実際のフォルダIDに置き換える必要があります
+
+3. **データ構造**: Notionノードの出力構造に応じて、Code Nodeのエントリーポイントを調整する必要がある場合があります
+
+4. **エラーハンドリング**: Code Nodeでエラーが発生した場合、空配列を返すため、後続ノードでエラーハンドリングが必要です
+
+5. **直列接続の重要性**: Split Outノードを削除し、Code - Generate Slides with Pillow → Code - Convert to Binary → Google Drive → Code - Merge Slide Metadata → Aggregate → Set という直列接続のみを使用することで、7枚すべてのスライドが確実に処理されます
 
 ---
 
@@ -346,8 +372,10 @@ Phase4aの成功チェックが必要な場合は、以下のノードを追加�
 
 1. **テスト実行と検証**（優先度: 高）
    - ✅ Code Nodeの出力確認（7枚のスライドが生成されているか）
-   - ✅ Split Outノードの出力確認（7つのアイテムに分割されているか）
+   - ✅ Split Outノードが使用されていないことを確認（n8n 1.40以降の不具合回避のため）
+   - ✅ Code - Convert to Binaryノードが7つのアイテムを処理しているか確認
    - ✅ Google Driveに7枚の画像がアップロードされているか確認
+   - ✅ Code - Merge Slide Metadataノードが正しくメタデータをマージしているか確認
    - ✅ Aggregateノードの出力確認（7枚の結果が統合されているか）
    - ✅ Setノードの出力確認（`slides_count`が7であるか、`slides_metadata`が正しい形式か）
 
@@ -365,8 +393,8 @@ Phase4aの成功チェックが必要な場合は、以下のノードを追加�
 `phase4a_code_node.py`のエントリーポイントは、`データ統合`ノードの出力構造に応じて自動調整されますが、実際のワークフローで確認が必要です。
 
 **確認ポイント**:
-- `データ統合`ノードが`scriptData`を含むか
-- `scriptData`内に`Brand Colors`、`Duration Config`、`Motion Prompts`、`Visual Elements`が含まれるか
+- `Notion - Get Script Data`ノードが`properties`を含むか
+- `properties`内に`Brand Colors`、`Duration Config`、`Motion Prompts`、`Visual Elements`が含まれるか
 
 ### Google DriveフォルダID設定
 
@@ -376,4 +404,3 @@ Phase4aの成功チェックが必要な場合は、以下のノードを追加�
 1. Google Driveでスライド画像用フォルダを作成
 2. フォルダIDを取得（URLから取得可能）
 3. n8n UIでノード設定の`Parents`フィールドに設定
-

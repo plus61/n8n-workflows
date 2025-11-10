@@ -1,0 +1,55 @@
+{
+  "script_id": "test-script-phase4b-001",
+  "slides_metadata": [
+    {
+      "section": "hook",
+      "duration": 3,
+      "image_url": "https://picsum.photos/1080/1920?random=1",
+      "motion_prompt": "dramatic zoom in effect, professional business style, sharp focus",
+      "text": "あなたのビジネス、本当に見つけられていますか？"
+    },
+    {
+      "section": "intro",
+      "duration": 10,
+      "image_url": "https://picsum.photos/1080/1920?random=2",
+      "motion_prompt": "smooth slide transition, calm professional tone, steady camera",
+      "text": "多くの地域ビジネスが、Googleマップで見つけられずに機会を失っています"
+    },
+    {
+      "section": "point1",
+      "duration": 13,
+      "image_url": "https://picsum.photos/1080/1920?random=3",
+      "motion_prompt": "gentle fade in with subtle zoom, educational style, clean motion",
+      "text": "MEO対策で検索順位を大幅に改善できます"
+    },
+    {
+      "section": "point2",
+      "duration": 13,
+      "image_url": "https://picsum.photos/1080/1920?random=4",
+      "motion_prompt": "gentle fade in with subtle zoom, educational style, clean motion",
+      "text": "実際の成功事例では3ヶ月で問い合わせが3倍に"
+    },
+    {
+      "section": "point3",
+      "duration": 14,
+      "image_url": "https://picsum.photos/1080/1920?random=5",
+      "motion_prompt": "gentle fade in with subtle zoom, educational style, clean motion",
+      "text": "今すぐ始めれば、競合に差をつけられます"
+    },
+    {
+      "section": "summary",
+      "duration": 20,
+      "image_url": "https://picsum.photos/1080/1920?random=6",
+      "motion_prompt": "cinematic pan effect, inspiring tone, smooth movement",
+      "text": "MEO対策で検索順位を改善し、問い合わせを増やしましょう"
+    },
+    {
+      "section": "cta",
+      "duration": 7,
+      "image_url": "https://picsum.photos/1080/1920?random=7",
+      "motion_prompt": "pulsing call-to-action, urgent professional, attention-grabbing",
+      "text": "今すぐチャンネル登録"
+    }
+  ]
+}
+

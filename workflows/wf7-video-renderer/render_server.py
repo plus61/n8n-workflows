@@ -197,6 +197,90 @@ async def render_video(request: RenderRequest):
         }
 
 
+class ConcatVideoRequest(BaseModel):
+    """Video concatenation request model for Phase 4c"""
+    script_id: str
+    videos_metadata: List[Dict[str, Any]]
+
+
+@app.post("/concat-videos")
+async def concat_videos_endpoint(request: ConcatVideoRequest):
+    """
+    Phase 4c: Concatenate 7 videos into final MP4
+
+    Expects:
+    {
+        "script_id": "29b68d5c-2986-817f-xxx",
+        "videos_metadata": [
+            {
+                "section": "hook",
+                "duration": 3,
+                "video_url": "https://v3b.fal.media/files/...",
+                "filename": "video_1_hook.mp4"
+            },
+            ... 7 videos total
+        ]
+    }
+
+    Returns:
+    {
+        "success": true,
+        "script_id": "...",
+        "final_video_url": "...",  # or base64 data
+        "total_duration": 80,
+        "videos_count": 7
+    }
+    """
+    import sys
+    import os
+
+    # Add current directory to Python path to import phase4c module
+    sys.path.insert(0, os.path.dirname(__file__))
+
+    try:
+        from phase4c_ffmpeg_concat import concat_videos
+
+        # Call the concat function
+        input_data = {
+            "script_id": request.script_id,
+            "videos_metadata": request.videos_metadata
+        }
+
+        result = concat_videos(input_data)
+
+        # Read the final video file and encode as base64
+        output_path = result.get("output_video_path")
+        if output_path and os.path.exists(output_path):
+            with open(output_path, "rb") as f:
+                video_data = f.read()
+                video_b64 = base64.b64encode(video_data).decode('utf-8')
+
+            # Cleanup temp files
+            from phase4c_ffmpeg_concat import cleanup_temp_files
+            cleanup_temp_files(result.get("temp_dir"))
+
+            return {
+                "success": True,
+                "script_id": request.script_id,
+                "videoData": video_b64,  # Base64-encoded final video
+                "total_duration": result.get("total_duration"),
+                "videos_count": result.get("videos_count"),
+                "output_size_bytes": result.get("output_video_size"),
+                "mimeType": "video/mp4"
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Output video not found: {output_path}"
+            )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Video concatenation failed: {str(e)}"
+        )
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint"""
