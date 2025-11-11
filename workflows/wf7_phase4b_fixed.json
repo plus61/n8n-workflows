@@ -1,0 +1,730 @@
+{
+  "name": "WF7 Phase4b - Image to Video",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4b-image-to-video",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-phase4b-start",
+      "name": "Webhook - Phase 4b Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        288
+      ],
+      "webhookId": "wf7-phase4b-start",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "execute-workflow-trigger-phase4b",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook経由の場合は $json.body から、Execute Workflow Trigger経由の場合は $json から取得\nconst rawInput = $input.first().json;\nconst input = rawInput.body || rawInput;\n\n// notionPageId または script_id の両方に対応\nconst scriptId = input.notionPageId || input.script_id;\n\nif (!scriptId) {\n  throw new Error('script_id or notionPageId is required');\n}\n\n// スライド数を1〜7枚に対応（7枚固定から変更）\nif (!input.slides_metadata || !Array.isArray(input.slides_metadata)) {\n  throw new Error('slides_metadata must be an array');\n}\n\nif (input.slides_metadata.length < 1 || input.slides_metadata.length > 7) {\n  throw new Error('slides_metadata must contain between 1 and 7 items');\n}\n\n// 各スライドの必須フィールド確認\nfor (const slide of input.slides_metadata) {\n  if (!slide.image_url) throw new Error(`Missing image_url for ${slide.section}`);\n  if (!slide.duration) throw new Error(`Missing duration for ${slide.section}`);\n  // motion_promptは空文字列でもOK（必須チェックを削除）\n}\n\n// script_idを統一して返す（配列として返す）\nreturn [{\n  ...input,\n  script_id: scriptId\n}];"
+      },
+      "id": "validate-input-node",
+      "name": "Code - Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        288
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "slides_metadata",
+        "options": {}
+      },
+      "id": "split-slides-node",
+      "name": "Split Out - Slides",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        912,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.image_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "download-from-gdrive-node",
+      "name": "HTTP Request - Download from Google Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1136,
+        368
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8nの$jmespath.hash関数を使用してSHA-1ハッシュを生成\nconst apiSecret = 'IKxxQL7zniUB5s9TeijsChM8hAs';\nconst timestamp = Math.floor(Date.now() / 1000);\nconst folder = 'n8n_meo_wf7_slide';\n\nconst stringToSign = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;\n\n// JavaScriptの組み込みWeb Crypto APIを使用（n8nで許可されている）\nconst encoder = new TextEncoder();\nconst data = encoder.encode(stringToSign);\n\n// SHA-1ハッシュを計算（同期的な実装）\nfunction sha1(str) {\n  function rotateLeft(n, s) {\n    return (n << s) | (n >>> (32 - s));\n  }\n  \n  function toHexStr(n) {\n    let s = '', v;\n    for (let i = 7; i >= 0; i--) {\n      v = (n >>> (i * 4)) & 0xf;\n      s += v.toString(16);\n    }\n    return s;\n  }\n  \n  function utf8Encode(str) {\n    return unescape(encodeURIComponent(str));\n  }\n  \n  let message = utf8Encode(str);\n  let msgLen = message.length;\n  let words = [];\n  \n  for (let i = 0; i < msgLen; i++) {\n    words[i >>> 2] |= (message.charCodeAt(i) & 0xff) << (24 - 8 * (i % 4));\n  }\n  \n  words[msgLen >>> 2] |= 0x80 << (24 - 8 * (msgLen % 4));\n  words[(((msgLen + 8) >>> 6) << 4) + 15] = msgLen * 8;\n  \n  let h0 = 0x67452301;\n  let h1 = 0xefcdab89;\n  let h2 = 0x98badcfe;\n  let h3 = 0x10325476;\n  let h4 = 0xc3d2e1f0;\n  \n  for (let i = 0; i < words.length; i += 16) {\n    let w = words.slice(i, i + 16);\n    for (let j = 16; j < 80; j++) {\n      w[j] = rotateLeft(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);\n    }\n    \n    let a = h0, b = h1, c = h2, d = h3, e = h4;\n    \n    for (let j = 0; j < 80; j++) {\n      let f, k;\n      if (j < 20) {\n        f = (b & c) | (~b & d);\n        k = 0x5a827999;\n      } else if (j < 40) {\n        f = b ^ c ^ d;\n        k = 0x6ed9eba1;\n      } else if (j < 60) {\n        f = (b & c) | (b & d) | (c & d);\n        k = 0x8f1bbcdc;\n      } else {\n        f = b ^ c ^ d;\n        k = 0xca62c1d6;\n      }\n      \n      let temp = (rotateLeft(a, 5) + f + e + k + (w[j] | 0)) | 0;\n      e = d;\n      d = c;\n      c = rotateLeft(b, 30);\n      b = a;\n      a = temp;\n    }\n    \n    h0 = (h0 + a) | 0;\n    h1 = (h1 + b) | 0;\n    h2 = (h2 + c) | 0;\n    h3 = (h3 + d) | 0;\n    h4 = (h4 + e) | 0;\n  }\n  \n  return toHexStr(h0) + toHexStr(h1) + toHexStr(h2) + toHexStr(h3) + toHexStr(h4);\n}\n\nconst signature = sha1(stringToSign);\n\nreturn {\n  json: {\n    ...($input.first().json),\n    cloudinary_timestamp: timestamp,\n    cloudinary_signature: signature\n  },\n  binary: $input.first().binary\n};"
+      },
+      "id": "generate-cloudinary-signature-node",
+      "name": "Code - Generate Cloudinary Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        368
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8nのヘルパー関数を使用してバイナリデータを取得\ntry {\n  const binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\n  \n  // Base64エンコード\n  const base64Data = binaryData.toString('base64');\n  \n  // バイナリデータのMIMEタイプを取得\n  const mimeType = $binary.data.mimeType || 'image/jpeg';\n  \n  // Data URI形式に変換\n  const dataUri = `data:${mimeType};base64,${base64Data}`;\n  \n  // Cloudinary認証情報\n  const cloudName = 'drzmodro8';\n  const apiKey = '188947963992381';\n  const timestamp = $json.cloudinary_timestamp;\n  const signature = $json.cloudinary_signature;\n  const folder = 'n8n_meo_wf7_slide';\n  \n  // Cloudinary Upload APIを呼び出し\n  const response = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,\n    headers: {\n      'Content-Type': 'application/json'\n    },\n    body: {\n      file: dataUri,\n      folder: folder,\n      timestamp: timestamp,\n      api_key: apiKey,\n      signature: signature\n    },\n    json: true\n  });\n  \n  return {\n    json: response\n  };\n  \n} catch (error) {\n  // 詳細なエラー情報を返す\n  return {\n    json: {\n      error: error.message,\n      error_details: error.response?.data || error.response || 'No response data',\n      status_code: error.response?.status || 'unknown',\n      cloudinary_timestamp: $json.cloudinary_timestamp,\n      cloudinary_signature: $json.cloudinary_signature\n    }\n  };\n}"
+      },
+      "id": "upload-to-cloudinary-node",
+      "name": "Code - Upload to Cloudinary with Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        368
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cloudinary-url",
+              "name": "cloudinary_url",
+              "value": "={{ $json.secure_url }}",
+              "type": "string"
+            },
+            {
+              "id": "section-preserved",
+              "name": "section",
+              "value": "={{ $('Split Out - Slides').item.json.section }}",
+              "type": "string"
+            },
+            {
+              "id": "duration-preserved",
+              "name": "duration",
+              "value": "={{ $('Split Out - Slides').item.json.duration }}",
+              "type": "number"
+            },
+            {
+              "id": "motion-prompt-preserved",
+              "name": "motion_prompt",
+              "value": "={{ $('Split Out - Slides').item.json.motion_prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "text-preserved",
+              "name": "text",
+              "value": "={{ $('Split Out - Slides').item.json.text || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "original-image-url",
+              "name": "original_image_url",
+              "value": "={{ $('Split Out - Slides').item.json.image_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "preserve-slide-metadata-node",
+      "name": "Set - Preserve Slide Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1808,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 現在処理中のスライド（Cloudinary URLを含む）\nconst slide = $input.first().json;\nconst scriptId = $('Code - Validate Input').item.json.script_id;\n\n// Cloudinary URLを使用\nconst imageUrl = slide.cloudinary_url;\n\nif (!imageUrl) {\n  throw new Error('Cloudinary URL not found');\n}\n\n// FAL Compose APIペイロード構築\nconst payload = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: [\n        {\n          url: imageUrl,\n          timestamp: 0,\n          duration: slide.duration\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    fal_payload: JSON.stringify(payload),\n    slide_metadata: slide,\n    script_id: scriptId,\n    slide_index: $itemIndex,\n    image_url: imageUrl,  // デバッグ用\n    original_gdrive_url: slide.original_image_url  // デバッグ用\n  }\n};"
+      },
+      "id": "prepare-fal-payload-node",
+      "name": "Code - Prepare FAL Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        368
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fal_payload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "submit-to-fal-node",
+      "name": "HTTP Request - Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2256,
+        368
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "wait-5s-node",
+      "name": "Wait - 5 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2480,
+        368
+      ],
+      "webhookId": "phase4b-wait-5s"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('HTTP Request - Submit to FAL').item.json.status_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "check-status-node",
+      "name": "HTTP Request - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2704,
+        368
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "render-complete-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "render-completed-if-node",
+      "name": "IF - Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2928,
+        272
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-result-node",
+      "name": "HTTP Request - Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3152,
+        192
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resultData = $input.first().json;\nconst slideData = $('Code - Prepare FAL Payload').item.json.slide_metadata;\nconst scriptId = $('Code - Prepare FAL Payload').item.json.script_id;\nconst requestId = $('HTTP Request - Submit to FAL').item.json.request_id;\nconst slideIndex = $('Code - Prepare FAL Payload').item.json.slide_index;\n\nconst videoUrl = resultData.output?.video_url \n  || resultData.video_url \n  || resultData.result?.video_url;\n\nif (!videoUrl) {\n  throw new Error('Video URL not found in FAL API response');\n}\n\nreturn {\n  json: {\n    section: slideData.section,\n    duration: slideData.duration,\n    video_url: videoUrl,\n    fal_request_id: requestId,\n    motion_prompt: slideData.motion_prompt,\n    filename: `video_${slideIndex + 1}_${slideData.section}.mp4`,\n    text: slideData.text,\n    slide_index: slideIndex,\n    script_id: scriptId\n  }\n};"
+      },
+      "id": "build-video-metadata-node",
+      "name": "Code - Build Video Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3376,
+        192
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "aggregate-all-videos-node",
+      "name": "Aggregate - Wait for All Videos",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        3600,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// エラー時と正常時の両方に対応\nconst inputData = $input.first().json;\n\n// エラー時の処理（エラー出力から来た場合）\nif (inputData.error || (!inputData.data && !inputData.success)) {\n  return [{\n    json: {\n      success: false,\n      error: inputData.error || inputData.message || 'Unknown error occurred',\n      script_id: inputData.script_id || 'unknown'\n    }\n  }];\n}\n\n// 正常時の処理（Aggregateノードから来た場合）\nconst aggregatedData = inputData.data;\n\nif (!aggregatedData || !Array.isArray(aggregatedData) || aggregatedData.length === 0) {\n  return [{\n    json: {\n      success: false,\n      error: 'No data received from Aggregate node',\n      script_id: inputData.script_id || 'unknown'\n    }\n  }];\n}\n\nconst firstItem = aggregatedData[0];\nif (!firstItem || !firstItem.script_id) {\n  return [{\n    json: {\n      success: false,\n      error: 'script_id not found in aggregated data',\n      script_id: 'unknown'\n    }\n  }];\n}\nconst scriptId = firstItem.script_id;\n\nconst sectionOrder = ['hook', 'intro', 'point1', 'point2', 'point3', 'summary', 'cta'];\n\nconst videosMetadata = aggregatedData.sort((a, b) => {\n  return sectionOrder.indexOf(a.section) - sectionOrder.indexOf(b.section);\n});\n\nreturn [{\n  json: {\n    success: true,\n    script_id: scriptId,\n    videos_metadata: videosMetadata,\n    videos_count: videosMetadata.length,\n    total_duration: videosMetadata.reduce((sum, v) => sum + v.duration, 0)\n  }\n}];"
+      },
+      "id": "build-final-response-node",
+      "name": "Code - Build Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        192
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "retry-count",
+              "name": "retry_count",
+              "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "status-url",
+              "name": "status_url",
+              "value": "={{ $json.status_url }}",
+              "type": "string"
+            },
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "slide-metadata",
+              "name": "slide_metadata",
+              "value": "={{ $('Code - Prepare FAL Payload').item.json.slide_metadata }}",
+              "type": "object"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.response_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "retry-counter-node",
+      "name": "Set - Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3152,
+        424
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-retry-limit",
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-retry-limit-node",
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3376,
+        408
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "wait-before-retry-node",
+      "name": "Wait - Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3600,
+        424
+      ],
+      "webhookId": "phase4b-retry-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "const slide = $input.first().json.slide_metadata;\nconst retryCount = $input.first().json.retry_count;\n\nreturn [{\n  json: {\n    success: false,\n    error: `Rendering timeout for ${slide.section} after ${retryCount} retries`,\n    section: slide.section,\n    retry_count: retryCount,\n    script_id: slide.script_id || 'unknown'\n  }\n}];"
+      },
+      "id": "timeout-error-node",
+      "name": "Code - Timeout Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        616
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook - Phase 4b Start": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Split Out - Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out - Slides": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Download from Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Download from Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Cloudinary Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Upload to Cloudinary with Base64": {
+      "main": [
+        [
+          {
+            "node": "Set - Preserve Slide Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Preserve Slide Metadata": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare FAL Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare FAL Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait - 5 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - 5 Seconds": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Get Result": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Video Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Video Metadata": {
+      "main": [
+        [
+          {
+            "node": "Aggregate - Wait for All Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate - Wait for All Videos": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "IF - Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Wait - Before Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Timeout Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Before Retry": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Timeout Error": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Cloudinary Signature": {
+      "main": [
+        [
+          {
+            "node": "Code - Upload to Cloudinary with Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "meta": null,
+  "pinData": {}
+}
+

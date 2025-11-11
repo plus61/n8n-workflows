@@ -1,0 +1,234 @@
+{
+  "name": "WF7 Phase4b - Image to Video (Cloudinary Slideshow)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4b-image-to-video",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f641c8e6-f47e-4ed5-85f1-38039c78d25e",
+      "name": "Webhook - Phase 4b Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2960,
+        304
+      ],
+      "webhookId": "wf7-phase4b-start",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "87269dc9-9dd2-4774-89b6-f6076351efdd",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2736,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook経由の場合は $json.body から、Execute Workflow Trigger経由の場合は $json から取得\nconst rawInput = $input.first().json;\nconst input = rawInput.body || rawInput;\n\n// notionPageId または script_id の両方に対応\nconst scriptId = input.notionPageId || input.script_id;\n\nif (!scriptId) {\n  throw new Error('script_id or notionPageId is required');\n}\n\n// スライド数を1〜7枚に対応\nif (!input.slides_metadata || !Array.isArray(input.slides_metadata)) {\n  throw new Error('slides_metadata must be an array');\n}\n\nif (input.slides_metadata.length < 1 || input.slides_metadata.length > 7) {\n  throw new Error('slides_metadata must contain between 1 and 7 items');\n}\n\n// 各スライドの必須フィールド確認\nfor (const slide of input.slides_metadata) {\n  if (!slide.image_url) throw new Error(`Missing image_url for ${slide.section}`);\n  if (!slide.duration) throw new Error(`Missing duration for ${slide.section}`);\n}\n\n// script_idを統一して返す（配列として返す）\nreturn [{\n  ...input,\n  script_id: scriptId\n}];"
+      },
+      "id": "dbd01332-0583-4624-b336-429b1288352b",
+      "name": "Code - Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2512,
+        304
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst slides = input.slides_metadata;\n\nif (!slides || slides.length === 0) {\n  throw new Error('slides_metadata is empty');\n}\n\n// Cloudinary manifest_json構造\nconst manifest = {\n  width: 1920,\n  height: 1080,\n  fps: 30,\n  slides: slides.map(slide => ({\n    media: slide.image_url,\n    duration: slide.duration\n  }))\n};\n\n// 合計時間を計算\nconst totalDuration = slides.reduce((sum, s) => sum + s.duration, 0);\n\nreturn {\n  json: {\n    script_id: input.script_id,\n    manifest_json: JSON.stringify(manifest),\n    slides_metadata: slides,\n    total_duration: totalDuration,\n    slides_count: slides.length\n  }\n};"
+      },
+      "id": "new-build-manifest",
+      "name": "Code - Build Slideshow Manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2288,
+        304
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const apiSecret = 'IKxxQL7zniUB5s9TeijsChM8hAs';\nconst timestamp = Math.floor(Date.now() / 1000);\nconst manifest_json = $json.manifest_json;\n\n// create_slideshow用の署名生成\nconst stringToSign = `manifest_json=${manifest_json}&timestamp=${timestamp}${apiSecret}`;\n\n// SHA-1ハッシュ生成\nfunction sha1(str) {\n  function rotateLeft(n, s) {\n    return (n << s) | (n >>> (32 - s));\n  }\n  \n  function toHexStr(n) {\n    let s = '', v;\n    for (let i = 7; i >= 0; i--) {\n      v = (n >>> (i * 4)) & 0xf;\n      s += v.toString(16);\n    }\n    return s;\n  }\n  \n  function utf8Encode(str) {\n    return unescape(encodeURIComponent(str));\n  }\n  \n  let message = utf8Encode(str);\n  let msgLen = message.length;\n  let words = [];\n  \n  for (let i = 0; i < msgLen; i++) {\n    words[i >>> 2] |= (message.charCodeAt(i) & 0xff) << (24 - 8 * (i % 4));\n  }\n  \n  words[msgLen >>> 2] |= 0x80 << (24 - 8 * (msgLen % 4));\n  words[(((msgLen + 8) >>> 6) << 4) + 15] = msgLen * 8;\n  \n  let h0 = 0x67452301;\n  let h1 = 0xefcdab89;\n  let h2 = 0x98badcfe;\n  let h3 = 0x10325476;\n  let h4 = 0xc3d2e1f0;\n  \n  for (let i = 0; i < words.length; i += 16) {\n    let w = words.slice(i, i + 16);\n    for (let j = 16; j < 80; j++) {\n      w[j] = rotateLeft(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);\n    }\n    \n    let a = h0, b = h1, c = h2, d = h3, e = h4;\n    \n    for (let j = 0; j < 80; j++) {\n      let f, k;\n      if (j < 20) {\n        f = (b & c) | (~b & d);\n        k = 0x5a827999;\n      } else if (j < 40) {\n        f = b ^ c ^ d;\n        k = 0x6ed9eba1;\n      } else if (j < 60) {\n        f = (b & c) | (b & d) | (c & d);\n        k = 0x8f1bbcdc;\n      } else {\n        f = b ^ c ^ d;\n        k = 0xca62c1d6;\n      }\n      \n      let temp = (rotateLeft(a, 5) + f + e + k + (w[j] | 0)) | 0;\n      e = d;\n      d = c;\n      c = rotateLeft(b, 30);\n      b = a;\n      a = temp;\n    }\n    \n    h0 = (h0 + a) | 0;\n    h1 = (h1 + b) | 0;\n    h2 = (h2 + c) | 0;\n    h3 = (h3 + d) | 0;\n    h4 = (h4 + e) | 0;\n  }\n  \n  return toHexStr(h0) + toHexStr(h1) + toHexStr(h2) + toHexStr(h3) + toHexStr(h4);\n}\n\nconst signature = sha1(stringToSign);\n\nreturn {\n  json: {\n    ...($input.first().json),\n    cloudinary_timestamp: timestamp,\n    cloudinary_signature: signature\n  }\n};"
+      },
+      "id": "d683316a-c1b9-4c02-b866-9221b8267e41",
+      "name": "Code - Generate Cloudinary Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2064,
+        304
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudinary.com/v1_1/drzmodro8/video/create_slideshow",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "manifest_json",
+              "value": "={{ $json.manifest_json }}"
+            },
+            {
+              "name": "api_key",
+              "value": "188947963992381"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.cloudinary_timestamp }}"
+            },
+            {
+              "name": "signature",
+              "value": "={{ $json.cloudinary_signature }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 180000
+        }
+      },
+      "id": "new-cloudinary-slideshow",
+      "name": "HTTP Request - Cloudinary Create Slideshow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1840,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// エラーハンドリング\nif (input.error || !input.secure_url) {\n  return [{\n    json: {\n      success: false,\n      error: input.error || 'Video generation failed',\n      script_id: $('Code - Build Slideshow Manifest').item.json.script_id || 'unknown'\n    }\n  }];\n}\n\n// 正常時のレスポンス\nconst manifestData = $('Code - Build Slideshow Manifest').item.json;\n\nreturn [{\n  json: {\n    success: true,\n    script_id: manifestData.script_id,\n    video_url: input.secure_url,\n    video_duration: input.duration || manifestData.total_duration,\n    video_format: input.format || 'mp4',\n    width: input.width || 1920,\n    height: input.height || 1080,\n    cloudinary_asset_id: input.asset_id,\n    cloudinary_public_id: input.public_id,\n    slides_count: manifestData.slides_count,\n    created_at: input.created_at || new Date().toISOString()\n  }\n}];"
+      },
+      "id": "a10424f7-2b06-4527-9057-ecb6d50cf591",
+      "name": "Code - Build Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1616,
+        304
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "3449d915-b316-4a54-9f08-8071cf0524f9",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -1392,
+        304
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Slideshow Manifest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Slideshow Manifest": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Cloudinary Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Cloudinary Signature": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Cloudinary Create Slideshow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Cloudinary Create Slideshow": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Final Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "pinData": {},
+  "tags": []
+}
