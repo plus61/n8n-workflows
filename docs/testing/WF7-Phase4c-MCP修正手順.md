@@ -84,3 +84,6 @@ FAL APIの`/compose`エンドポイントの場合、完了後の動画URLは以
 **作成者**: Claude Code (Composer)  
 **更新日**: 2025-11-09
 
+
+
+

@@ -69,3 +69,6 @@ Code - Generate Slides with Pillow → Split Out - Individual Slides → Code - 
 - Google Drive - Upload Slide Imageが7回実行される
 - Aggregateノードが7枚の結果を統合
 
+
+
+

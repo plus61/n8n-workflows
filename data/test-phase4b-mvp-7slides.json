@@ -1,0 +1,47 @@
+{
+  "script_id": "mvp-test-7slides",
+  "slides_metadata": [
+    {
+      "section": "hook",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+      "duration": 3,
+      "filename": "slide_1_hook.png"
+    },
+    {
+      "section": "intro",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/golden_gate.jpg",
+      "duration": 10,
+      "filename": "slide_2_intro.png"
+    },
+    {
+      "section": "point1",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/basketball_shot.jpg",
+      "duration": 13,
+      "filename": "slide_3_point1.png"
+    },
+    {
+      "section": "point2",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/balloons.jpg",
+      "duration": 13,
+      "filename": "slide_4_point2.png"
+    },
+    {
+      "section": "point3",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/couple.jpg",
+      "duration": 14,
+      "filename": "slide_5_point3.png"
+    },
+    {
+      "section": "summary",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/docs/models.jpg",
+      "duration": 20,
+      "filename": "slide_6_summary.png"
+    },
+    {
+      "section": "cta",
+      "image_url": "https://res.cloudinary.com/demo/image/upload/woman.jpg",
+      "duration": 7,
+      "filename": "slide_7_cta.png"
+    }
+  ]
+}

@@ -574,6 +574,238 @@ return [{ json: data }];
 }
 ```
 
+### 🚨 Critical: n8n Notion Nodeのプロパティアクセスパターン
+
+#### ルール1: Notion Nodeが返すプロパティには `property_` プレフィックスが付く
+
+**n8n Notion Nodeの特性**:
+- Notion APIから取得したページプロパティは `property_` プレフィックス付きで返される
+- プロパティ値は**直接文字列として返される**（rich_text構造なし）
+- 例: `Script JSON` プロパティ → `property_script_json` キー
+
+**❌ 間違ったアクセスパターン** (rich_text構造を想定):
+```javascript
+// Python Code Nodeでの誤った実装
+def generate_slides(script_data):
+    # Notionプロパティ取得
+    properties = script_data.get('properties', {})
+
+    # Script JSONからsegments配列を取得
+    script_json_raw = properties.get('Script JSON', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+    # ^^^ この構造は存在しない！
+
+    try:
+        script_json = json.loads(script_json_raw) if script_json_raw else {}
+        segments = script_json.get('segments', [])
+    except Exception as e:
+        print(f"Script JSON解析エラー: {e}")
+        segments = []
+
+    # len(segments) は常に 0 になる
+    # フォールバックテキストが使用される
+```
+
+**問題点**:
+- `properties` オブジェクトは空 `{}` になる
+- `script_json_raw` は常に `'{}'` (空のJSON文字列)
+- `segments` 配列は常に空 `[]`
+- 結果: すべてフォールバックテキスト（「フックテキストがありません」等）が使用される
+
+**✅ 正しいアクセスパターン** (property_プレフィックス + 直接文字列):
+```javascript
+// Python Code Nodeでの正しい実装
+def generate_slides(script_data):
+    # Script JSONを直接取得（property_プレフィックス付き）
+    script_json_raw = script_data.get('property_script_json', '{}')
+    # ^^^ 直接文字列として取得
+
+    try:
+        script_json = json.loads(script_json_raw) if script_json_raw else {}
+        segments = script_json.get('segments', [])
+    except Exception as e:
+        print(f"Script JSON解析エラー: {e}")
+        segments = []
+
+    # len(segments) >= 7 の場合、実際のデータが使用される
+```
+
+**正しい動作**:
+- `property_script_json` キーから直接JSON文字列を取得
+- JSON parse後に `segments` 配列を抽出
+- 実際の台本データ（日本語字幕等）が使用される
+
+#### ルール2: すべてのNotionプロパティに適用
+
+**Notionプロパティとn8nキーの対応表**:
+
+| Notionプロパティ名 | n8n Notion Nodeキー | データ型 | アクセス方法 |
+|------------------|-------------------|---------|------------|
+| **Script JSON** | `property_script_json` | string (JSON) | `script_data.get('property_script_json', '{}')` |
+| **Brand Colors** | `property_brand_colors` | string (JSON) | `script_data.get('property_brand_colors', '{}')` |
+| **Visual Elements** | `property_visual_elements` | string (JSON) | `script_data.get('property_visual_elements', '{}')` |
+| **Duration Config** | `property_duration_config` | string (JSON) | `script_data.get('property_duration_config', '{}')` |
+| **Motion Prompts** | `property_motion_prompts` | string (JSON) | `script_data.get('property_motion_prompts', '{}')` |
+| **Title** | `property_title` または `name` | string | `script_data.get('name', '')` |
+
+**命名規則**:
+```
+Notionプロパティ名をスネークケースに変換 + property_ プレフィックス
+
+例:
+- "Script JSON" → "property_script_json"
+- "Brand Colors" → "property_brand_colors"
+- "Visual Elements" → "property_visual_elements"
+- "Duration Config" → "property_duration_config"
+- "Motion Prompts" → "property_motion_prompts"
+```
+
+#### 実際のエラー事例（WF7 Phase4a）
+
+**症状**:
+- 7枚のスライドすべてにフォールバックテキストが表示
+- 実際の日本語字幕（「子供の英語学習に最適な場所は？」等）が表示されない
+- Notion Script JSONには正しいデータが存在
+
+**原因分析**:
+```javascript
+// Notion Node実行結果（Execution #1674）
+{
+  "json": {
+    "id": "2a568d5c-2986-81bd-8e64-fb2407df397b",
+    "name": "渋谷で見つける: 子供の英語学習に最適な場所",
+    "property_script_json": "{\n  \"segments\": [\n    {\n      \"assetTag\": \"渋谷の景色\",\n      \"duration\": 8,\n      \"subtitle\": \"子供の英語学習に最適な場所は？\",\n      \"narration\": \"渋谷で見つける、子供の英語学習に最適な場所を探していますか？\"\n    },\n    // ... 6 more segments
+    ]\n}",
+    "property_brand_colors": "",
+    "property_motion_prompts": "",
+    "property_visual_elements": "",
+    "property_duration_config": ""
+  }
+}
+
+// Python Code Nodeの誤った実装
+properties = script_data.get('properties', {})  # Returns {}
+script_json_raw = properties.get('Script JSON', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+# Returns '{}' (空のJSON文字列)
+
+# 結果: len(segments) = 0
+# フォールバックロジックが実行される
+```
+
+**修正内容**:
+```python
+# 修正前（誤り）
+script_json_raw = properties.get('Script JSON', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+brand_colors_raw = properties.get('Brand Colors', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+visual_elements_raw = properties.get('Visual Elements', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+duration_config_raw = properties.get('Duration Config', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+motion_prompts_raw = properties.get('Motion Prompts', {}).get('rich_text', [{}])[0].get('plain_text', '{}')
+
+# 修正後（正しい）
+script_json_raw = script_data.get('property_script_json', '{}')
+brand_colors_raw = script_data.get('property_brand_colors', '{}')
+visual_elements_raw = script_data.get('property_visual_elements', '{}')
+duration_config_raw = script_data.get('property_duration_config', '{}')
+motion_prompts_raw = script_data.get('property_motion_prompts', '{}')
+```
+
+**修正結果**:
+- ✅ 7枚のスライドすべてに実際の日本語字幕が表示
+- ✅ duration が segments から正しく取得される
+- ✅ motion_prompt が取得される（デフォルト値）
+- ✅ Cloudinary アップロードが成功する
+
+**実行例（修正後）**:
+```json
+{
+  "slides_metadata": [
+    {"section": "hook", "duration": 8, "text": "子供の英語学習に最適な場所は？"},
+    {"section": "intro", "duration": 7, "text": "信頼できる場所が見つからない…"},
+    {"section": "point1", "duration": 10, "text": "AI検索を活用しよう！"},
+    {"section": "point2", "duration": 8, "text": "地図最適化で簡単検索"},
+    {"section": "point3", "duration": 7, "text": "渋谷の優れた店舗が多数！"},
+    {"section": "summary", "duration": 5, "text": "さあ、始めよう！"},
+    {"section": "cta", "duration": 5, "text": "詳細はリンクをチェック！"}
+  ]
+}
+```
+
+### ベストプラクティス
+
+#### 1. Notion Node出力を使う場合の実装パターン
+
+```python
+# Python Code Node実装例
+def process_notion_data(script_data):
+    # ✅ 正しい: property_プレフィックス付きで直接アクセス
+    script_json_raw = script_data.get('property_script_json', '{}')
+    brand_colors_raw = script_data.get('property_brand_colors', '{}')
+
+    # JSON parse
+    try:
+        script_json = json.loads(script_json_raw) if script_json_raw else {}
+        brand_colors = json.loads(brand_colors_raw) if brand_colors_raw else DEFAULT_COLORS
+    except json.JSONDecodeError as e:
+        print(f"JSON parse error: {e}")
+        script_json = {}
+        brand_colors = DEFAULT_COLORS
+
+    # データ使用
+    segments = script_json.get('segments', [])
+    background_color = brand_colors.get('background', '#1a1a2e')
+
+    return segments, background_color
+```
+
+#### 2. デバッグ時の確認手順
+
+**Step 1**: Notion Node出力を確認
+```javascript
+// n8n_get_executionで実際のNotion Node出力を取得
+{
+  "json": {
+    "property_script_json": "{...}",  // ← この形式で返される
+    "property_brand_colors": "{...}",
+    "name": "ページタイトル"
+  }
+}
+```
+
+**Step 2**: プロパティキー名を確認
+```python
+# デバッグ用ログ出力
+print(f"Available keys: {list(script_data.keys())}")
+# Output: ['id', 'name', 'property_script_json', 'property_brand_colors', ...]
+```
+
+**Step 3**: プロパティ値の取得確認
+```python
+# 値が正しく取得できているか確認
+script_json_raw = script_data.get('property_script_json', '{}')
+print(f"Script JSON raw length: {len(script_json_raw)}")
+print(f"First 100 chars: {script_json_raw[:100]}")
+```
+
+#### 3. チェックリスト
+
+- [ ] Notion Nodeからデータを取得する場合、`property_` プレフィックスを使用
+- [ ] `properties.get('Prop Name').rich_text[0].plain_text` パターンは使わない
+- [ ] `script_data.get('property_prop_name', '')` パターンを使用
+- [ ] JSON文字列として返されるため、`json.loads()` でparse
+- [ ] デフォルト値を必ず設定（空文字列 `''` または空JSON `'{}'`）
+- [ ] JSON parse エラーハンドリングを実装
+
+### 教訓
+
+1. **n8n Notion Nodeの出力形式を理解する**: `property_` プレフィックス + 直接文字列
+2. **rich_text構造を想定しない**: Notion APIの構造とn8n Nodeの出力は異なる
+3. **デバッグ時はまずキー名を確認**: `list(script_data.keys())` で実際の構造を把握
+4. **段階的な実装**: プロパティ取得 → JSON parse → データ使用の3段階で実装
+5. **テストデータで検証**: 実際のNotionページで最初にテストし、データ構造を確認
+
+### 適用例
+
+- **WF7 Phase4a**: Execution #1674-1677でフォールバック問題発生 → 修正後正常動作確認 (2025-11-12)
+
 ### Notionページ作成の正しいリクエスト構造
 
 ```javascript
@@ -1518,7 +1750,483 @@ API Call C → Poll C ─┘
 
 ---
 
-## 10. チェックリスト
+## 10. n8n IF Nodeの挙動とリトライループ実装パターン
+
+### 🚨 Critical: n8n IF Nodeの特異な挙動
+
+#### ルール1: IFノードは常にoutput[1]にデータをルーティングする
+
+**n8n IF Nodeの特性**:
+- 条件評価の結果（TRUE/FALSE）に関わらず、**常にデータはoutput[1]に流れる**
+- output[0]は条件結果を示すメタデータのみで、実際のデータは含まれない
+- この挙動はn8nの既知のバグまたは設計仕様
+
+**❌ 直感的な接続（動作しない）**:
+```json
+{
+  "IF - Check Retry Limit": {
+    "main": [
+      [{"node": "HTTP Request - Check Status"}],  // output[0] → リトライ継続
+      [{"node": "Code - Timeout Error"}]           // output[1] → タイムアウト
+    ]
+  }
+}
+```
+
+**問題点**:
+- TRUEと評価されても、データはoutput[1]に流れる
+- 結果: リトライループが動作せず、常にタイムアウトエラーノードに到達
+- リトライカウンタが増加しないため、初回で「リトライ上限到達」と判定される
+
+**✅ 正しい接続（動作する）**:
+```json
+{
+  "IF - Check Retry Limit": {
+    "main": [
+      [{"node": "Code - Timeout Error"}],          // output[0] → タイムアウト（反転）
+      [{"node": "HTTP Request - Check Status"}]    // output[1] → リトライ継続（反転）
+    ]
+  }
+}
+```
+
+**正しい動作**:
+- output[0]とoutput[1]の接続先を**逆にする**
+- これにより、実際のデータフロー（output[1]）がリトライループに流れる
+- FALSE評価時のみ、output[0]経由でタイムアウトエラーに到達
+
+#### ルール2: リトライループ実装の標準パターン
+
+**完全なノード構成**:
+
+1. **HTTP Request - Submit to FAL** (非同期API呼び出し)
+```json
+{
+  "parameters": {
+    "method": "POST",
+    "url": "https://queue.fal.run/fal-ai/vidu/image-to-video",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ {...} }}"
+  }
+}
+```
+- 役割: Vidu APIにリクエスト送信
+- 戻り値: `request_id`, `status_url`, `response_url`
+
+2. **Wait - Initial** (初回待機)
+```json
+{
+  "parameters": {
+    "amount": 2,
+    "unit": "seconds"
+  }
+}
+```
+- 役割: API処理開始までの最小待機時間
+- 推奨値: 2-5秒
+
+3. **HTTP Request - Check Status** (ステータス確認)
+```json
+{
+  "parameters": {
+    "method": "GET",
+    "url": "={{ $json.status_url }}"
+  }
+}
+```
+- 役割: FAL APIのステータスをポーリング
+- 戻り値: `status` (IN_QUEUE, IN_PROGRESS, COMPLETED)
+
+4. **IF - Status is Completed** (完了判定)
+```json
+{
+  "parameters": {
+    "conditions": {
+      "conditions": [{
+        "leftValue": "={{ $json.status }}",
+        "rightValue": "COMPLETED",
+        "operator": {
+          "type": "string",
+          "operation": "equals"
+        }
+      }]
+    }
+  }
+}
+```
+- 役割: 処理完了の判定
+- TRUE → 結果取得へ
+- FALSE → リトライカウンタへ
+
+5. **Code - Increment Retry** (リトライカウンタ)
+```javascript
+const currentRetry = $input.first().json.retry_count || 0;
+return [{
+  json: {
+    ...$input.first().json,
+    retry_count: currentRetry + 1
+  }
+}];
+```
+- 役割: リトライ回数の追跡
+- 初回: `retry_count = 1`
+- 2回目以降: 既存値+1
+
+6. **IF - Check Retry Limit** (リトライ上限チェック)
+```json
+{
+  "parameters": {
+    "conditions": {
+      "conditions": [{
+        "leftValue": "={{ $json.retry_count }}",
+        "rightValue": 5,
+        "operator": {
+          "type": "number",
+          "operation": "smaller"
+        }
+      }]
+    }
+  }
+}
+```
+- 役割: リトライ上限（5回）の判定
+- TRUE (`retry_count < 5`) → リトライ継続（**output[1]経由**）
+- FALSE (`retry_count >= 5`) → タイムアウトエラー（**output[0]経由**）
+- **⚠️ 重要**: 接続を逆にする必要がある（上記ルール1参照）
+
+7. **Wait - Before Retry** (リトライ前待機)
+```json
+{
+  "parameters": {
+    "amount": 5,
+    "unit": "seconds"
+  }
+}
+```
+- 役割: リトライ間隔の制御
+- 推奨値: 5秒（APIレート制限考慮）
+- **ループバック接続**: このノードから「HTTP Request - Check Status」へ接続
+
+8. **Code - Timeout Error** (タイムアウトエラー)
+```javascript
+const section = $('Code - Prepare FAL Payload').item.json.slide_metadata.section;
+const retryCount = $input.first().json.retry_count || 0;
+return [{
+  json: {
+    success: false,
+    error: `Rendering timeout for ${section} after ${retryCount} retries`,
+    section: section,
+    retry_count: retryCount
+  }
+}];
+```
+- 役割: タイムアウト時のエラーレスポンス
+- エラー内容、section、retry_countを含む
+
+#### ルール3: 接続構造の完全マップ
+
+**正しい接続（output[0]とoutput[1]が反転）**:
+```json
+{
+  "connections": {
+    "HTTP Request - Submit to FAL": {
+      "main": [[{"node": "Wait - Initial"}]]
+    },
+    "Wait - Initial": {
+      "main": [[{"node": "HTTP Request - Check Status"}]]
+    },
+    "HTTP Request - Check Status": {
+      "main": [[{"node": "IF - Status is Completed"}]]
+    },
+    "IF - Status is Completed": {
+      "main": [
+        [{"node": "HTTP Request - Get Result"}],    // TRUE → 完了時
+        [{"node": "Code - Increment Retry"}]        // FALSE → 未完了時
+      ]
+    },
+    "Code - Increment Retry": {
+      "main": [[{"node": "IF - Check Retry Limit"}]]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [{"node": "Code - Timeout Error"}],         // output[0] → タイムアウト（反転！）
+        [{"node": "Wait - Before Retry"}]           // output[1] → リトライ継続（反転！）
+      ]
+    },
+    "Wait - Before Retry": {
+      "main": [[{"node": "HTTP Request - Check Status"}]]  // ← ループバック
+    },
+    "Code - Timeout Error": {
+      "main": [[{"node": "Respond to Webhook"}]]
+    },
+    "HTTP Request - Get Result": {
+      "main": [[{"node": "Code - Build Video Metadata"}]]
+    },
+    "Code - Build Video Metadata": {
+      "main": [[{"node": "Respond to Webhook"}]]
+    }
+  }
+}
+```
+
+**重要ポイント**:
+- `IF - Check Retry Limit`のoutput[0]とoutput[1]が**逆接続**
+- この反転により、実際のデータフロー（output[1]）がリトライループに流れる
+- ループバック: `Wait - Before Retry` → `HTTP Request - Check Status`
+
+### 実際のエラー事例と修正
+
+#### 事例1: リトライループが1回も実行されない (WF7 Phase4b Version 40以前)
+
+**症状**:
+- Webhook呼び出し: `POST /webhook/wf7-phase4b-image-to-video`
+- 実行時間: ~2秒（異常に短い）
+- エラー: "Rendering timeout for hook after 1 retries"
+- 期待動作: 最大5回リトライ（約27秒）
+
+**原因分析**:
+```javascript
+// Version 40の接続（誤り）
+{
+  "IF - Check Retry Limit": {
+    "main": [
+      [{"node": "HTTP Request - Check Status"}],  // output[0] → リトライ継続
+      [{"node": "Code - Timeout Error"}]           // output[1] → タイムアウト
+    ]
+  }
+}
+
+// 実際のデータフロー:
+// 1. Code - Increment Retry → IF - Check Retry Limit
+// 2. IFノードは常にデータをoutput[1]に流す
+// 3. output[1]に接続されているのは「Code - Timeout Error」
+// 4. 結果: 初回（retry_count=1）で即座にタイムアウトエラー
+```
+
+**問題点**:
+- 直感的な接続（TRUE→リトライ、FALSE→エラー）が動作しない
+- n8n IFノードの特異な挙動により、常にoutput[1]にデータが流れる
+- リトライループが一度も実行されない
+
+**修正内容（Version 41）**:
+```json
+{
+  "operations": [{
+    "type": "updateNode",
+    "nodeId": "...",  // IF - Check Retry Limit
+    "updates": {
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 400],
+      "parameters": {
+        "conditions": {
+          "conditions": [{
+            "leftValue": "={{ $json.retry_count }}",
+            "rightValue": 5,
+            "operator": {
+              "type": "number",
+              "operation": "smaller"
+            }
+          }]
+        }
+      }
+    }
+  }]
+},
+{
+  "connections": {
+    "IF - Check Retry Limit": {
+      "main": [
+        [{"node": "Code - Timeout Error"}],         // output[0] → タイムアウト（反転！）
+        [{"node": "HTTP Request - Check Status"}]   // output[1] → リトライ継続（反転！）
+      ]
+    }
+  }
+}
+```
+
+**修正結果（Execution 1835, Version 40/41）**:
+- HTTP Request - Check Status: 32回実行 ✅
+- IF - Check Retry Limit: 31回実行 ✅
+- 実行時間: 27秒（リトライループが正常動作）
+- 最終結果: 動画レンダリング完了、メタデータ取得成功
+
+**パフォーマンス改善**:
+- Version 40以前: 2秒で失敗（リトライ1回のみ）
+- Version 41以降: 27秒で成功（リトライ31回、完了まで自動ポーリング）
+
+#### 事例2: 動画URL抽出失敗 (WF7 Phase4b Version 41→43)
+
+**症状**:
+- リトライループは正常動作（Version 41の修正により）
+- エラー: "Video URL not found in FAL API response [line 10]"
+- FAL APIは正常に動画を生成
+
+**原因分析**:
+```javascript
+// Code - Build Video Metadata (Version 41, 誤り)
+const videoUrl = resultData.output?.video_url ||
+                 resultData.video_url ||
+                 resultData.result?.video_url;
+// ❌ resultData.video?.url のチェックが欠落
+
+// 実際のFAL APIレスポンス (HTTP Request - Get Result):
+{
+  "video": {
+    "url": "https://v3b.fal.media/files/b/monkey/wcMoML5e1xQeiLMIRoEVK_output.mp4",
+    "content_type": "video/mp4",
+    "file_name": "output.mp4",
+    "file_size": 1068711
+  }
+}
+```
+
+**修正内容（Version 43）**:
+```javascript
+// Code - Build Video Metadata (Version 43, 正しい)
+const videoUrl = resultData.video?.url ||              // ✅ 最優先チェック追加
+                 resultData.output?.video_url ||
+                 resultData.video_url ||
+                 resultData.result?.video_url;
+
+if (!videoUrl) {
+  throw new Error('Video URL not found in FAL API response');
+}
+
+return {
+  json: {
+    section: slideData.section,
+    duration: slideData.duration,
+    video_url: videoUrl,
+    fal_request_id: requestId,
+    motion_prompt: slideData.motion_prompt,
+    filename: `video_${slideIndex + 1}_${slideData.section}.mp4`,
+    text: slideData.text,
+    slide_index: slideIndex,
+    script_id: scriptId
+  }
+};
+```
+
+**修正結果（Version 43テスト）**:
+- 実行時間: ~27秒（リトライループ正常動作）
+- HTTP Status: 200 OK
+- レスポンスボディ: 完全な動画メタデータ
+```json
+{
+  "section": "hook",
+  "duration": 3,
+  "video_url": "https://v3b.fal.media/files/b/koala/vMh7M9AjM4xYRHPbzqgYn_output.mp4",
+  "fal_request_id": "37b83e75-c9c8-49c1-b009-99f5f1078f88",
+  "motion_prompt": "Subtle zoom in effect",
+  "filename": "video_1_hook.mp4",
+  "text": "驚きの事実！",
+  "slide_index": 0,
+  "script_id": "test-phase4b-vidu-20250112"
+}
+```
+
+### ベストプラクティス
+
+#### 1. IFノードを使ったリトライループ実装時
+
+- [ ] IFノードのoutput[0]とoutput[1]の接続を**逆にする**
+- [ ] リトライ継続条件（TRUE評価）を**output[1]**に接続
+- [ ] エラー/タイムアウト条件（FALSE評価）を**output[0]**に接続
+- [ ] ループバック接続を確実に実装（Wait → Status Check）
+- [ ] リトライカウンタノードで`retry_count`を追跡
+- [ ] タイムアウトエラーノードでエラー情報を含むレスポンス生成
+
+#### 2. 非同期API処理パターン
+
+- [ ] 初回待機時間を設定（2-5秒）
+- [ ] ステータスチェックノードでAPI状態を確認
+- [ ] 完了判定IFノードで処理終了を検出
+- [ ] リトライ間隔を適切に設定（5秒推奨）
+- [ ] 最大リトライ回数を設定（5-6回推奨）
+- [ ] 合計タイムアウト時間を計算（初回待機 + リトライ×間隔）
+
+#### 3. デバッグ手法
+
+**Step 1: Execution履歴でリトライ回数を確認**
+```javascript
+n8n_get_execution({
+  id: "executionId",
+  mode: "summary"
+})
+
+// 確認項目:
+// - HTTP Request - Check Status の itemsOutput 回数
+// - IF - Check Retry Limit の itemsOutput 回数
+// - 期待値: リトライ上限+1回（初回+リトライ）
+```
+
+**Step 2: IFノードの接続方向を確認**
+```javascript
+n8n_get_workflow_structure({
+  id: "workflowId"
+})
+
+// connections オブジェクトを確認:
+// - IF - Check Retry Limit の main[0] → エラーノード
+// - IF - Check Retry Limit の main[1] → リトライループ
+// ^^^ この順序が重要！
+```
+
+**Step 3: データフローの追跡**
+```javascript
+// 各ノードの実行データを確認
+// - retry_count が増加しているか
+// - status が COMPLETED になるまでループしているか
+// - 最終的に正しいノードに到達しているか
+```
+
+### タイムアウト設計の計算式
+
+**推奨パラメータ（Vidu API）**:
+```
+初回待機: 2秒
+リトライ間隔: 5秒
+最大リトライ: 5回
+
+合計待機時間 = 2秒 + (5回 × 5秒) = 27秒
+```
+
+**調整ガイドライン**:
+
+| API処理時間 | 初回待機 | リトライ間隔 | 最大リトライ | 合計 |
+|-----------|---------|------------|------------|------|
+| **短い** (5-10秒) | 2秒 | 3秒 | 3回 | 11秒 |
+| **標準** (10-20秒) | 2秒 | 5秒 | 5回 | 27秒 |
+| **長い** (20-40秒) | 5秒 | 5秒 | 7回 | 40秒 |
+
+### 教訓
+
+1. **n8n IFノードの挙動を理解する**: 常にoutput[1]にデータが流れる
+2. **接続を逆にする**: 直感に反するが、これが正しい実装
+3. **実行履歴で検証**: リトライ回数が期待値と一致するか確認
+4. **段階的デバッグ**: まずループ動作、次にデータ処理の順で修正
+5. **API仕様の確認**: レスポンス構造を正確に把握し、適切にパース
+
+### 適用例
+
+**WF7 Phase4b - Single Video Generator**:
+- **Version 40以前**: リトライループ非動作（2秒で失敗）
+- **Version 41**: IFノード接続反転によりリトライループ動作（27秒で完了）
+- **Version 43**: 動画URL抽出修正により完全動作
+- **日付**: 2025-11-12
+- **Workflow ID**: `mfRdJJFJRKmeBjKv`
+
+**次のステップ**:
+- 他の非同期API統合にも同じパターンを適用
+- リトライループの標準テンプレートとして文書化
+- Phase4b完成後、Phase4c（動画結合）への統合
+
+---
+
+## 11. チェックリスト
 
 ### ワークフロー構築時チェックリスト
 

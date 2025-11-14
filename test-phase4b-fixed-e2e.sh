@@ -81,3 +81,6 @@ fi
 echo "ログファイル: ${LOG_FILE}"
 echo ""
 
+
+
+

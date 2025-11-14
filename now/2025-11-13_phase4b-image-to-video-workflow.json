@@ -1,0 +1,349 @@
+{
+  "name": "WF7 Phase4b - Image to Video Generator (Luma Ray 2 Flash)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4b-image-to-video",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-phase4b-start",
+      "name": "Webhook - Phase4b Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-1984, 400],
+      "webhookId": "phase4b-image-to-video-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase4b: Luma Ray 2 Flash (Image to Video) ペイロード準備\nconst input = $input.first().json;\n\n// Webhookからのデータ構造に対応\nconst bodyData = input.body || input;\nconst imageUrl = bodyData.image_url || bodyData.url;\nconst prompt = bodyData.prompt || \"教育動画風の動きのある映像\";\nconst duration = bodyData.duration || 5; // 秒数（5 or 9）\nconst scriptId = bodyData.pageId || bodyData.script_id || 'unknown';\nconst slideIndex = bodyData.slide_index || 0;\n\nif (!imageUrl) {\n  throw new Error('image_url is required');\n}\n\n// Luma Ray 2 Flash API用ペイロード\nconst payload = {\n  prompt: prompt,\n  image_url: imageUrl,\n  aspect_ratio: \"16:9\",\n  resolution: \"540p\",  // コスト最適化のため540p\n  duration: duration === 9 ? \"9s\" : \"5s\",\n  loop: false\n};\n\nreturn {\n  json: {\n    fal_payload: payload,\n    script_id: scriptId,\n    slide_index: slideIndex,\n    requested_duration: duration\n  }\n};"
+      },
+      "id": "code-prepare-payload",
+      "name": "Code - Prepare Luma Ray 2 Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1760, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/luma-dream-machine/ray-2-flash/image-to-video",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $credentials.falApiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fal_payload }}",
+        "options": {}
+      },
+      "id": "http-submit-to-fal",
+      "name": "HTTP Request - Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-1536, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "id": "wait-10s",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-1312, 400],
+      "webhookId": "phase4b-wait-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "retry_count",
+              "name": "retry_count",
+              "value": 0,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-retry-counter",
+      "name": "Set - Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-1104, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://queue.fal.run/fal-ai/luma-dream-machine/ray-2-flash/image-to-video/requests/{{ $('HTTP Request - Submit to FAL').item.json.request_id }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $credentials.falApiKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-check-status",
+      "name": "HTTP Request - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-880, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "status-check-1",
+              "operator": {
+                "name": "filter.operator.equals",
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-completed",
+      "name": "IF - Generation Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-656, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.retry_count }}",
+              "operation": "larger",
+              "value2": 10
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-retry-limit",
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-656, 624]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $credentials.falApiKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-result",
+      "name": "HTTP Request - Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-432, 288],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase4b: Luma Ray 2 Flash レスポンスから動画URLを抽出\nconst statusResponse = $input.first().json;\nconst prepareNode = $('Code - Prepare Luma Ray 2 Payload').first().json;\n\n// Luma Ray 2 Flash は video.url 構造で返す\nconst videoUrl = statusResponse.video?.url;\n\nif (!videoUrl) {\n  throw new Error(`Failed to extract video URL. Response: ${JSON.stringify(statusResponse, null, 2)}`);\n}\n\nreturn {\n  json: {\n    success: true,\n    script_id: prepareNode.script_id,\n    slide_index: prepareNode.slide_index,\n    video_url: videoUrl,\n    duration: prepareNode.requested_duration,\n    status: 'COMPLETED'\n  }\n};"
+      },
+      "id": "code-extract-video",
+      "name": "Code - Extract Video URL & Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-224, 288]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-16, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Phase4b Start": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Luma Ray 2 Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Luma Ray 2 Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Set - Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Generation Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Generation Completed?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Get Result": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Video URL & Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Video URL & Build Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

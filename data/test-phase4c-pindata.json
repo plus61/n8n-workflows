@@ -1,0 +1,47 @@
+[
+  {
+    "json": {
+      "script_id": "test-script-phase4c-001",
+      "articleId": "test-article-001",
+      "videos_metadata": [
+        {
+          "section": "hook",
+          "duration": 3,
+          "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4"
+        },
+        {
+          "section": "intro",
+          "duration": 10,
+          "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4"
+        },
+        {
+          "section": "point1",
+          "duration": 13,
+          "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4"
+        },
+        {
+          "section": "point2",
+          "duration": 13,
+          "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4"
+        },
+        {
+          "section": "point3",
+          "duration": 14,
+          "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4"
+        },
+        {
+          "section": "summary",
+          "duration": 20,
+          "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4"
+        },
+        {
+          "section": "cta",
+          "duration": 7,
+          "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4"
+        }
+      ]
+    }
+  }
+]
+
+

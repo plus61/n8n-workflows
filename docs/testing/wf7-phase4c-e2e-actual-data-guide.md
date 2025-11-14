@@ -221,3 +221,6 @@ jq '.videos_metadata | map({section, duration, video_url, order: (.slide_index +
 - `/docs/testing/wf7-phase4c-e2e-test-execution-guide.md`: E2Eテスト実行ガイド
 - `/docs/testing/wf7-phase4ab-integrated-e2e-test-report.md`: Phase4ab統合テストレポート
 
+
+
+

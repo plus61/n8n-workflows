@@ -1,9 +1,11 @@
 FROM python:3.11-slim
 
-# ffmpegインストール
+# ffmpegとフォントのインストール
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libmagic1 \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
     && rm -rf /var/lib/apt/lists/*
 
 # Python依存関係（FastAPIサーバー用）

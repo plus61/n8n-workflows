@@ -84,3 +84,6 @@ n8nのCode Nodeが配列を返す場合：
 
 `fieldToSplitOut`を設定しない場合、n8nは自動的に配列を検出して分割します。
 
+
+
+

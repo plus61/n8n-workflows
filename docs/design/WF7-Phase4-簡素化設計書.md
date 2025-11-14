@@ -251,3 +251,6 @@ video_size_mb: number
 **作成**: Claude Code (Composer)  
 **最終更新**: 2025-11-09
 
+
+
+

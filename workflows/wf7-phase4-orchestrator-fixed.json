@@ -1,0 +1,462 @@
+{
+  "name": "WF7 Phase4 Simplified Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4-orchestrator",
+        "responseMode": "responseNode",
+        "responseNode": "Respond to Webhook",
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1308,
+        348
+      ],
+      "webhookId": "f633b00b-0ac5-447f-a27a-e05802c4c23a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4a-slide-generator",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "execute-phase4a",
+      "name": "HTTP Request - Call Phase4a",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1008,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-python-production-344b.up.railway.app/webhook/wf7-phase4b-image-to-video",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { script_id: $json.script_id, slides_metadata: $json.slides } }}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "fullResponse": false
+          },
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "http-request-phase4b",
+      "name": "HTTP Request - Call Phase4b",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -708,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Phase4bのレスポンスを保持しつつリトライカウンターを初期化\nconst phase4bData = $input.first().json;\n\nreturn [\n  {\n    json: {\n      ...phase4bData,\n      retry_count: 0,\n      max_retries: 5\n    }\n  }\n];"
+      },
+      "id": "code-init-retry",
+      "name": "Code - Initialize Retry Count",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -558,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-cloudinary",
+      "name": "Wait - Cloudinary Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -408,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://res.cloudinary.com/drzmodro8/video/upload/{{ $('HTTP Request - Call Phase4b').item.json.cloudinary_public_id }}.json",
+        "authentication": "none",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "http-cloudinary-status",
+      "name": "HTTP Request - Check Cloudinary Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -258,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "video-ready-check",
+              "leftValue": "={{ $json.secure_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        },
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "if-video-ready",
+      "name": "IF - Video Ready",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -108,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "video-url",
+              "name": "video_url",
+              "value": "={{ $json.secure_url }}",
+              "type": "string"
+            },
+            {
+              "id": "script-id",
+              "name": "script_id",
+              "value": "={{ $('HTTP Request - Call Phase4b').item.json.script_id }}",
+              "type": "string"
+            },
+            {
+              "id": "duration",
+              "name": "duration",
+              "value": "={{ $json.duration }}",
+              "type": "number"
+            },
+            {
+              "id": "success",
+              "name": "success",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-video-url",
+      "name": "Set - Video URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        42,
+        248
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// リトライカウントをインクリメント\nconst currentData = $input.first().json;\nconst retryCount = (currentData.retry_count || 0) + 1;\n\nreturn [\n  {\n    json: {\n      ...currentData,\n      retry_count: retryCount,\n      wait_seconds: Math.min(20 * Math.pow(1.5, retryCount - 1), 60)\n    }\n  }\n];"
+      },
+      "id": "code-increment-retry",
+      "name": "Code - Increment Retry Count",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        42,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "retry-check",
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": "={{ $json.max_retries }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        },
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "if-max-retries",
+      "name": "IF - Max Retries Reached",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        192,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "id": "wait-retry",
+      "name": "Wait - Retry Backoff",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        342,
+        348
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-success",
+              "name": "success",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "error-message",
+              "name": "error",
+              "value": "Video generation timeout: Cloudinary processing exceeded maximum wait time",
+              "type": "string"
+            },
+            {
+              "id": "error-script-id",
+              "name": "script_id",
+              "value": "={{ $json.script_id }}",
+              "type": "string"
+            },
+            {
+              "id": "error-batch-id",
+              "name": "cloudinary_batch_id",
+              "value": "={{ $json.cloudinary_batch_id }}",
+              "type": "string"
+            },
+            {
+              "id": "error-retry-count",
+              "name": "retry_count",
+              "value": "={{ $json.retry_count }}",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "set-error-response",
+      "name": "Set - Error Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        342,
+        548
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        492,
+        348
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Call Phase4a",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Call Phase4a": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Call Phase4b",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Call Phase4b": {
+      "main": [
+        [
+          {
+            "node": "Code - Initialize Retry Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Initialize Retry Count": {
+      "main": [
+        [
+          {
+            "node": "Wait - Cloudinary Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Cloudinary Processing": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Cloudinary Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Cloudinary Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Video Ready": {
+      "main": [
+        [
+          {
+            "node": "Set - Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Increment Retry Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Video URL": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Increment Retry Count": {
+      "main": [
+        [
+          {
+            "node": "IF - Max Retries Reached",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Max Retries Reached": {
+      "main": [
+        [
+          {
+            "node": "Set - Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait - Retry Backoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Retry Backoff": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Cloudinary Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "versionId": ""
+}

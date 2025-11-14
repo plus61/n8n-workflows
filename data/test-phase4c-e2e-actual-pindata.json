@@ -1,0 +1,53 @@
+[
+  {
+    "section": "hook",
+    "duration": 3,
+    "video_url": "https://v3b.fal.media/files/b/penguin/X6YpaYnUTrgdaoUwG1RpN_output.mp4",
+    "order": 1,
+    "script_id": "test-phase4b-e2e-001"
+  },
+  {
+    "section": "intro",
+    "duration": 10,
+    "video_url": "https://v3b.fal.media/files/b/rabbit/W0yXmayD3qLoY9pCzcZGr_output.mp4",
+    "order": 2,
+    "script_id": "test-phase4b-e2e-001"
+  },
+  {
+    "section": "point1",
+    "duration": 13,
+    "video_url": "https://v3b.fal.media/files/b/zebra/nJ3xZFBAYkOAWUEVJhGSz_output.mp4",
+    "order": 3,
+    "script_id": "test-phase4b-e2e-001"
+  },
+  {
+    "section": "point2",
+    "duration": 13,
+    "video_url": "https://v3b.fal.media/files/b/kangaroo/VJ4M8PW3gD-Gvaotv6Ytw_output.mp4",
+    "order": 4,
+    "script_id": "test-phase4b-e2e-001"
+  },
+  {
+    "section": "point3",
+    "duration": 14,
+    "video_url": "https://v3b.fal.media/files/b/lion/z_5t0NnRNPAMkmyLtU48-_output.mp4",
+    "order": 5,
+    "script_id": "test-phase4b-e2e-001"
+  },
+  {
+    "section": "summary",
+    "duration": 20,
+    "video_url": "https://v3b.fal.media/files/b/lion/2DrUC9wrbnijVtivmyxlk_output.mp4",
+    "order": 6,
+    "script_id": "test-phase4b-e2e-001"
+  },
+  {
+    "section": "cta",
+    "duration": 7,
+    "video_url": "https://v3b.fal.media/files/b/koala/WEbozcdWRW7c3uv7peUsa_output.mp4",
+    "order": 7,
+    "script_id": "test-phase4b-e2e-001"
+  }
+]
+
+

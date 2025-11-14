@@ -78,3 +78,6 @@ Code Nodeが既に個別のアイテムとして出力しているため、Split
 - Google Drive - Upload Slide Image: 7回実行される
 - Aggregate - Combine All Slides: 7枚の結果を統合
 
+
+
+

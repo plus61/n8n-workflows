@@ -1,0 +1,347 @@
+{
+  "name": "WF7 Phase4c - Video Concatenator (NEW 10 nodes)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4c-video-concatenator",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-phase4c-start",
+      "name": "Webhook - Phase 4c Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        304
+      ],
+      "webhookId": "9c0e6a02-c8cc-4206-9379-69fabac1c9c2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase4c: FAL FFmpeg API用 tracks形式ペイロード準備\nconst input = $input.first().json;\nconst videosMetadata = input.videos_metadata || [];\nconst scriptId = input.script_id || input.notionPageId || 'unknown';\n\nif (!Array.isArray(videosMetadata) || videosMetadata.length === 0) {\n  throw new Error('videos_metadata array is required and must not be empty');\n}\n\n// Phase4b学習: 累積時間でkeyframes配置\nlet cumulativeTime = 0;\nconst keyframes = videosMetadata.map((video, index) => {\n  const duration = video.duration || 5;\n  const timestamp = cumulativeTime;\n  cumulativeTime += duration;\n  \n  return {\n    url: video.video_url,\n    timestamp: timestamp,\n    duration: duration\n  };\n});\n\nconst payload = {\n  tracks: [{\n    id: \"1\",\n    type: \"video\",\n    keyframes: keyframes\n  }]\n};\n\nreturn {\n  json: {\n    fal_payload: payload,\n    script_id: scriptId,\n    total_duration: cumulativeTime,\n    video_count: videosMetadata.length\n  }\n};"
+      },
+      "id": "code-prepare-payload",
+      "name": "Code - Prepare FAL FFmpeg Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $credentials.falApiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fal_payload }}",
+        "options": {}
+      },
+      "id": "http-submit-to-fal",
+      "name": "HTTP Request - Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "falApiCredentials",
+          "name": "FAL API Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "id": "wait-initial",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        304
+      ],
+      "webhookId": "91ebccee-7156-40fd-a4aa-82e123b16188"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "retry_count",
+              "name": "retry_count",
+              "value": 0,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-retry-counter",
+      "name": "Set - Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://queue.fal.run/fal-ai/ffmpeg-api/requests/{{ $('HTTP Request - Submit to FAL').item.json.request_id }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Key {{ $credentials.falApiKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-check-status",
+      "name": "HTTP Request - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "falApiCredentials",
+          "name": "FAL API Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "COMPLETED"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-render-completed",
+      "name": "IF - Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.retry_count }}",
+              "operation": "larger",
+              "value2": 10
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-check-retry-limit",
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase4b学習: 優先順位付きURL抽出\nconst statusResponse = $input.first().json;\nconst resultData = statusResponse.result || statusResponse.data || {};\nconst prepareNode = $('Code - Prepare FAL FFmpeg Payload').first().json;\n\n// 優先順位1: video?.url（Phase4bで最も信頼性が高い）\nlet videoUrl = resultData.video?.url;\n\n// 優先順位2: outputs配列\nif (!videoUrl) {\n  videoUrl = resultData.outputs?.[0];\n}\n\n// 優先順位3: 直接のvideo_url\nif (!videoUrl) {\n  videoUrl = resultData.video_url || statusResponse.video_url;\n}\n\nif (!videoUrl) {\n  throw new Error('Failed to extract video URL from FAL response');\n}\n\nreturn {\n  json: {\n    success: true,\n    script_id: prepareNode.script_id,\n    final_video_url: videoUrl,\n    total_duration: prepareNode.total_duration,\n    video_count: prepareNode.video_count,\n    status: 'COMPLETED'\n  }\n};"
+      },
+      "id": "code-extract-video-url",
+      "name": "Code - Extract Video URL & Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Phase 4c Start": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare FAL FFmpeg Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare FAL FFmpeg Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Set - Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Video URL & Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Video URL & Build Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "753f158a-9465-4ae6-b1fa-98f4bbec0b81",
+  "meta": {
+    "instanceId": "e9c363d40ffcf5cb39fdd1c6c049f829c896ae4dcf725366c52f88215e242e1a"
+  },
+  "id": "Exra8DkAfWsmOPiE",
+  "tags": []
+}

@@ -1,0 +1,380 @@
+{
+  "name": "WF7 Phase4b - Single Video Generator (FIXED)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "execute-workflow-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst slide = input.slide_metadata;\nconst scriptId = input.script_id;\nconst slideIndex = input.slide_index;\n\n// ✅ FIX: Convert duration from seconds to milliseconds\nconst payload = {\n  tracks: [\n    {\n      id: \"1\",\n      type: \"video\",\n      keyframes: [\n        {\n          url: slide.image_url,\n          timestamp: 0,\n          duration: slide.duration * 1000  // Convert seconds to milliseconds\n        }\n      ]\n    }\n  ]\n};\n\nreturn {\n  json: {\n    fal_payload: JSON.stringify(payload),\n    slide_metadata: slide,\n    script_id: scriptId,\n    slide_index: slideIndex,\n    image_url: slide.image_url\n  }\n};"
+      },
+      "id": "code-prepare-fal",
+      "name": "Code - Prepare FAL Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/ffmpeg-api/compose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.fal_payload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-submit-fal",
+      "name": "HTTP Request - Submit to FAL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "wait-5s",
+      "name": "Wait - 5 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [840, 300],
+      "webhookId": "phase4b-single-wait-fixed"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('HTTP Request - Submit to FAL').item.json.status_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "http-check-status",
+      "name": "HTTP Request - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "render-complete",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-completed",
+      "name": "IF - Render Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.response_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "http-get-result",
+      "name": "HTTP Request - Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "voV5kURaCkiUjLTZ",
+          "name": "fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resultData = $input.first().json;\nconst slideData = $('Code - Prepare FAL Payload').item.json.slide_metadata;\nconst scriptId = $('Code - Prepare FAL Payload').item.json.script_id;\nconst requestId = $('HTTP Request - Submit to FAL').item.json.request_id;\nconst slideIndex = $('Code - Prepare FAL Payload').item.json.slide_index;\n\nconst videoUrl = resultData.output?.video_url || resultData.video_url || resultData.result?.video_url;\n\nif (!videoUrl) {\n  throw new Error('Video URL not found in FAL API response');\n}\n\nreturn {\n  json: {\n    section: slideData.section,\n    duration: slideData.duration,\n    video_url: videoUrl,\n    fal_request_id: requestId,\n    motion_prompt: slideData.motion_prompt,\n    filename: `video_${slideIndex + 1}_${slideData.section}.mp4`,\n    text: slideData.text,\n    slide_index: slideIndex,\n    script_id: scriptId\n  }\n};"
+      },
+      "id": "code-build-metadata",
+      "name": "Code - Build Video Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "retry-count",
+              "name": "retry_count",
+              "value": "={{ $json.retry_count ? $json.retry_count + 1 : 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "status-url",
+              "name": "status_url",
+              "value": "={{ $json.status_url }}",
+              "type": "string"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $('HTTP Request - Submit to FAL').item.json.response_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-retry-counter",
+      "name": "Set - Retry Counter",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1440, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-limit",
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-retry-limit",
+      "name": "IF - Check Retry Limit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1640, 400]
+    },
+    {
+      "parameters": {},
+      "id": "wait-retry",
+      "name": "Wait - Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1840, 300],
+      "webhookId": "phase4b-single-retry-fixed"
+    },
+    {
+      "parameters": {
+        "jsCode": "const slideData = $('Code - Prepare FAL Payload').item.json.slide_metadata;\nconst retryCount = $input.first().json.retry_count;\n\nreturn {\n  json: {\n    success: false,\n    error: `Rendering timeout for ${slideData.section} after ${retryCount} retries`,\n    section: slideData.section,\n    retry_count: retryCount\n  }\n};"
+      },
+      "id": "code-timeout-error",
+      "name": "Code - Timeout Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 500]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare FAL Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare FAL Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Submit to FAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Submit to FAL": {
+      "main": [
+        [
+          {
+            "node": "Wait - 5 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - 5 Seconds": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Check Status": {
+      "main": [
+        [
+          {
+            "node": "IF - Render Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Render Completed?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Get Result": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Video Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "IF - Check Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Wait - Before Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Timeout Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Before Retry": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-12T00:00:00.000Z",
+  "versionId": ""
+}

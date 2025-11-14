@@ -1,0 +1,25 @@
+{
+  "name": "WF7 Phase4c - Video Concatenator (BACKUP 26 nodes)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf7-phase4c-video-concatenator",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-phase4c-start",
+      "name": "Webhook - Phase 4c Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 48]
+    }
+  ],
+  "backup_metadata": {
+    "original_workflow_id": "chPw11OY5sex6d9I",
+    "backup_date": "2025-01-12",
+    "node_count": 26,
+    "reason": "Backup before simplification to 10 nodes",
+    "note": "This is the complex 26-node version with 4 different video URL extraction approaches"
+  }
+}

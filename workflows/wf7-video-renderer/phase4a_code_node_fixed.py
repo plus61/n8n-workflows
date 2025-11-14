@@ -4,9 +4,9 @@ import base64
 import io
 import json
 
-# フォント設定（Railway環境）
-FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf"
-FONT_BOLD_PATH = "/usr/share/fonts/truetype/noto/NotoSansJP-Bold.ttf"
+# フォント設定（Railway環境 - fonts-noto-cjkパッケージ）
+FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+FONT_BOLD_PATH = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
 
 # デフォルトブランドカラー
 DEFAULT_BRAND_COLORS = {
@@ -46,10 +46,12 @@ def create_slide(text, section_type, duration, brand_colors, icon=None):
         font_label = ImageFont.truetype(FONT_PATH, 40)
         font_icon = ImageFont.truetype(FONT_PATH, 120)
     except Exception as e:
-        print(f"フォント読み込みエラー: {e}")
-        font_main = ImageFont.load_default()
-        font_label = ImageFont.load_default()
-        font_icon = ImageFont.load_default()
+        error_msg = f"フォント読み込み失敗: {e}\n"
+        error_msg += f"FONT_PATH={FONT_PATH}\n"
+        error_msg += f"FONT_BOLD_PATH={FONT_BOLD_PATH}\n"
+        error_msg += "Railway環境でフォントがインストールされているか確認してください\n"
+        error_msg += "必要パッケージ: fonts-noto-cjk, fonts-noto-cjk-extra"
+        raise RuntimeError(error_msg)
     
     if icon:
         accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))
@@ -112,14 +114,14 @@ def generate_slides(script_data):
     texts = {}
     durations = {}
     if len(segments) >= 7:
-        # segments配列から取得
-        texts['hook'] = segments[0].get('telop', 'フックテキストがありません')
-        texts['intro'] = segments[1].get('telop', '導入テキストがありません')
-        texts['point1'] = segments[2].get('telop', 'ポイント1がありません')
-        texts['point2'] = segments[3].get('telop', 'ポイント2がありません')
-        texts['point3'] = segments[4].get('telop', 'ポイント3がありません')
-        texts['summary'] = segments[5].get('telop', 'まとめがありません')
-        texts['cta'] = segments[6].get('telop', 'CTAがありません')
+        # segments配列から取得 (subtitleフィールドを使用)
+        texts['hook'] = segments[0].get('subtitle', 'フックテキストがありません')
+        texts['intro'] = segments[1].get('subtitle', '導入テキストがありません')
+        texts['point1'] = segments[2].get('subtitle', 'ポイント1がありません')
+        texts['point2'] = segments[3].get('subtitle', 'ポイント2がありません')
+        texts['point3'] = segments[4].get('subtitle', 'ポイント3がありません')
+        texts['summary'] = segments[5].get('subtitle', 'まとめがありません')
+        texts['cta'] = segments[6].get('subtitle', 'CTAがありません')
         
         # durationもsegmentsから取得（フォールバック値あり）
         durations = {
@@ -267,4 +269,7 @@ slides = generate_slides(script_data)
 
 # n8nのCodeノードが配列を返す場合、自動的に各要素が個別のアイテムとして扱われる
 return slides
+
+
+
 
