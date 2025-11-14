@@ -1,0 +1,13 @@
+# Railway Configuration
+# https://docs.railway.app/reference/config-as-code
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.fastapi"
+
+[deploy]
+startCommand = "python3 /app/render_server.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
