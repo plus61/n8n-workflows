@@ -3,11 +3,10 @@
 
 [build]
 builder = "dockerfile"
-dockerfilePath = "workflows/wf7-video-renderer/Dockerfile.fastapi"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python3 /app/render_server.py"
-healthcheckPath = "/health"
+healthcheckPath = "/healthz"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
