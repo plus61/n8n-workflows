@@ -197,6 +197,16 @@ async def render_video(request: RenderRequest):
         }
 
 
+class GenerateSingleVideoRequest(BaseModel):
+    """Single video generation request model for Phase4b"""
+    section: str                # "hook", "intro", "point1", etc.
+    duration: int               # Video duration in seconds (3-20)
+    image_url: str              # Cloudinary image URL
+    motion_prompt: str          # Motion description (currently unused)
+    text: str                   # Subtitle text
+    script_id: str              # Notion script ID
+
+
 class ConcatVideoRequest(BaseModel):
     """Video concatenation request model for Phase 4c"""
     script_id: str
@@ -279,6 +289,148 @@ async def concat_videos_endpoint(request: ConcatVideoRequest):
             status_code=500,
             detail=f"Video concatenation failed: {str(e)}"
         )
+
+
+@app.post("/generate-single-video")
+async def generate_single_video_endpoint(request: GenerateSingleVideoRequest):
+    """
+    Phase 4b: Generate single video from static image
+
+    Expects:
+    {
+        "section": "hook",
+        "duration": 3,
+        "image_url": "https://res.cloudinary.com/...",
+        "motion_prompt": "...",
+        "text": "...",
+        "script_id": "..."
+    }
+
+    Returns:
+    {
+        "success": true,
+        "section": "hook",
+        "duration": 3,
+        "videoData": "base64...",
+        "video_size_bytes": 150000,
+        "script_id": "...",
+        "motion_prompt": "...",
+        "text": "...",
+        "filename": "video_hook.mp4",
+        "mimeType": "video/mp4"
+    }
+    """
+    import requests
+    import time
+
+    # Validate duration
+    if not (1 <= request.duration <= 20):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid duration: {request.duration}. Must be 1-20 seconds."
+        )
+
+    # Validate image_url (Cloudinary only)
+    if not request.image_url.startswith("https://res.cloudinary.com/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only Cloudinary URLs are allowed"
+        )
+
+    # Create temp directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+
+        # Define paths
+        timestamp = int(time.time() * 1000)
+        input_path = tmp_path / f"slide_{request.section}_{timestamp}.png"
+        output_path = tmp_path / f"video_{request.section}_{timestamp}.mp4"
+
+        try:
+            # 1. Download image
+            print(f"Downloading image: {request.image_url}")
+            img_response = requests.get(request.image_url, timeout=30)
+            img_response.raise_for_status()
+
+            input_path.write_bytes(img_response.content)
+            print(f"Image downloaded: {input_path.stat().st_size} bytes")
+
+            # 2. Generate video with ffmpeg
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-loop", "1",
+                "-i", str(input_path),
+                "-t", str(request.duration),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-vf", "scale=1080:1920",
+                "-r", "30",
+                "-y",
+                str(output_path)
+            ]
+
+            print(f"Executing ffmpeg: duration={request.duration}s, section={request.section}")
+            result = subprocess.run(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=request.duration * 2 + 10
+            )
+
+            if result.returncode != 0:
+                stderr_lines = result.stderr.strip().split('\n')
+                stderr_tail = '\n'.join(stderr_lines[-20:])
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"FFmpeg execution failed: {stderr_tail}"
+                )
+
+            print(f"FFmpeg stdout: {result.stdout[-200:]}")
+
+            # 3. Check output file
+            if not output_path.exists():
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Output video not found: {output_path}"
+                )
+
+            video_size = output_path.stat().st_size
+            print(f"Video generated: {video_size} bytes, duration={request.duration}s")
+
+            # 4. Read and encode video
+            video_data = output_path.read_bytes()
+            video_b64 = base64.b64encode(video_data).decode('utf-8')
+
+            # 5. Return response
+            return {
+                "success": True,
+                "section": request.section,
+                "duration": request.duration,
+                "videoData": video_b64,
+                "video_size_bytes": video_size,
+                "script_id": request.script_id,
+                "motion_prompt": request.motion_prompt,
+                "text": request.text,
+                "filename": f"video_{request.section}.mp4",
+                "mimeType": "video/mp4"
+            }
+
+        except requests.RequestException as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Image download failed: {str(e)}"
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=504,
+                detail=f"FFmpeg timeout (duration={request.duration}s)"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Video generation failed: {str(e)}"
+            )
 
 
 @app.get("/health")
