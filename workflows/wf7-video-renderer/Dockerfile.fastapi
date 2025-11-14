@@ -1,12 +1,22 @@
 FROM python:3.11-slim
 
-# ffmpegとフォントのインストール
-RUN apt-get update && apt-get install -y \
+# ffmpegとフォントのインストール（診断出力追加）
+RUN echo "=== Starting package installation ===" && \
+    apt-get update && \
+    echo "=== Installing packages ===" && \
+    apt-get install -y \
     ffmpeg \
     libmagic1 \
     fonts-noto-cjk \
-    fonts-noto-cjk-extra \
-    && rm -rf /var/lib/apt/lists/*
+    fonts-noto-cjk-extra && \
+    echo "=== Verifying font installation ===" && \
+    dpkg -l | grep fonts-noto && \
+    echo "=== Listing font directories ===" && \
+    ls -la /usr/share/fonts/ || echo "Font directory not found" && \
+    ls -la /usr/share/fonts/truetype/ || echo "Truetype directory not found" && \
+    ls -la /usr/share/fonts/truetype/noto/ || echo "Noto directory not found" && \
+    echo "=== Font installation complete ===" && \
+    rm -rf /var/lib/apt/lists/*
 
 # Python依存関係（FastAPIサーバー用）
 COPY requirements-server.txt /app/
