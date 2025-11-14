@@ -34,9 +34,9 @@ dist/
 build/
 *.egg-info/
 
-# FastAPI/Python renderer (Creatomate統合により不要)
-workflows/wf7-video-renderer/
-supervisord.conf
+# FastAPI/Python renderer - Phase4bで使用中のため除外しない
+# workflows/wf7-video-renderer/
+# supervisord.conf
 
 # スクリーンショット
 *.png
