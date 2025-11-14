@@ -9,12 +9,132 @@ import json
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
+import io
+import textwrap
+from PIL import Image, ImageDraw, ImageFont
 
 app = FastAPI(title="WF7 FFmpeg Video Renderer")
+
+# Phase4a スライド生成用の定数
+# フォント設定（Railway環境 - fontconfigで自動解決）
+FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+FONT_BOLD_PATH = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
+
+# デフォルトブランドカラー
+DEFAULT_BRAND_COLORS = {
+    'background': '#1a1a2e',
+    'primary_text': '#ffffff',
+    'secondary_text': '#aaaaaa',
+    'accent': '#00d4ff',
+    'cta_bg': '#ff6b6b',
+    'cta_text': '#ffffff'
+}
+
+# セクションラベル
+SECTION_LABELS = {
+    "hook": "フック",
+    "intro": "導入",
+    "point1": "ポイント①",
+    "point2": "ポイント②",
+    "point3": "ポイント③",
+    "summary": "まとめ",
+    "cta": "今すぐ行動"
+}
+
+
+# Phase4a ヘルパー関数
+def hex_to_rgb(hex_color: str) -> tuple:
+    """Convert hex color (#RRGGBB) to RGB tuple"""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+
+def create_slide(text: str, section_type: str, duration: int,
+                 brand_colors: Dict[str, str], icon: Optional[str] = None) -> Image.Image:
+    """
+    Create a single slide image for Phase4a
+
+    Args:
+        text: Main text to display
+        section_type: One of hook, intro, point1-3, summary, cta
+        duration: Duration in seconds (for display label)
+        brand_colors: Dict with background, primary_text, accent colors
+        icon: Optional emoji icon to display
+
+    Returns:
+        PIL Image object (1080x1920)
+    """
+    bg_color = hex_to_rgb(brand_colors.get('background', '#1a1a2e'))
+    img = Image.new('RGB', (1080, 1920), color=bg_color)
+    draw = ImageDraw.Draw(img)
+
+    # Load fonts - fontconfig will resolve these paths
+    try:
+        if section_type in ["hook", "cta"]:
+            font_main = ImageFont.truetype(FONT_BOLD_PATH, 90)
+        else:
+            font_main = ImageFont.truetype(FONT_PATH, 70)
+        font_label = ImageFont.truetype(FONT_PATH, 40)
+        font_icon = ImageFont.truetype(FONT_PATH, 120)
+    except Exception as e:
+        # Explicit error - do not fall back silently
+        error_msg = f"Font loading failed: {e}\n"
+        error_msg += f"FONT_PATH={FONT_PATH}\n"
+        error_msg += f"FONT_BOLD_PATH={FONT_BOLD_PATH}\n"
+        error_msg += "Please verify fonts are installed in Railway environment"
+        raise RuntimeError(error_msg)
+
+    # Draw icon if provided
+    if icon:
+        accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))
+        draw.text((540, 400), icon, fill=accent_color, font=font_icon, anchor="mm")
+
+    # Wrap text based on section type
+    if section_type == "hook":
+        wrapped = textwrap.fill(text, width=15)
+        y_offset = 700
+    elif section_type == "cta":
+        wrapped = text
+        y_offset = 900
+    else:
+        wrapped = textwrap.fill(text, width=18)
+        y_offset = 600
+
+    # Calculate text position
+    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font_main)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    x = (1080 - text_width) // 2
+    y = y_offset
+
+    # Draw text with shadow
+    draw.multiline_text((x+3, y+3), wrapped, fill="#000000", font=font_main, align="center")
+    primary_text_color = hex_to_rgb(brand_colors.get('primary_text', '#ffffff'))
+    draw.multiline_text((x, y), wrapped, fill=primary_text_color, font=font_main, align="center")
+
+    # Draw duration label (bottom left)
+    label_text = f"{duration}秒"
+    secondary_text_color = hex_to_rgb(brand_colors.get('secondary_text', '#aaaaaa'))
+    draw.text((50, 1850), label_text, fill=secondary_text_color, font=font_label)
+
+    # Draw section label (top left)
+    section_label = SECTION_LABELS.get(section_type, "")
+    accent_color = hex_to_rgb(brand_colors.get('accent', '#00d4ff'))
+    draw.text((50, 100), section_label, fill=accent_color, font=font_label)
+
+    return img
+
+
+def image_to_base64(img: Image.Image) -> str:
+    """Convert PIL Image to base64 string"""
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    return base64.b64encode(buffer.read()).decode()
 
 
 class Asset(BaseModel):
@@ -211,6 +331,16 @@ class ConcatVideoRequest(BaseModel):
     """Video concatenation request model for Phase 4c"""
     script_id: str
     videos_metadata: List[Dict[str, Any]]
+
+
+class GenerateSlideRequest(BaseModel):
+    """Slide generation request model for Phase 4a"""
+    section: str                            # "hook", "intro", "point1", "point2", "point3", "summary", "cta"
+    text: str                               # Main text to display on slide
+    duration: int                           # Slide duration in seconds (3-20)
+    brand_colors: Optional[Dict[str, str]] = None  # Optional brand colors (uses DEFAULT_BRAND_COLORS if not provided)
+    icon: Optional[str] = None              # Optional emoji icon
+    script_id: str                          # Notion script ID
 
 
 @app.post("/concat-videos")
@@ -431,6 +561,98 @@ async def generate_single_video_endpoint(request: GenerateSingleVideoRequest):
                 status_code=500,
                 detail=f"Video generation failed: {str(e)}"
             )
+
+
+@app.post("/generate-slide")
+async def generate_slide_endpoint(request: GenerateSlideRequest):
+    """
+    Phase 4a: Generate single slide image with text overlay
+
+    Expects:
+    {
+        "section": "hook",
+        "text": "フックテキスト",
+        "duration": 3,
+        "brand_colors": {
+            "background": "#1a1a2e",
+            "primary_text": "#ffffff",
+            "accent": "#00d4ff"
+        },
+        "icon": "⚠️",
+        "script_id": "notion-id"
+    }
+
+    Returns:
+    {
+        "success": true,
+        "section": "hook",
+        "duration": 3,
+        "imageData": "base64...",
+        "image_size_bytes": 50000,
+        "filename": "slide_hook.png",
+        "mimeType": "image/png"
+    }
+    """
+    # 1. Validate section
+    valid_sections = ["hook", "intro", "point1", "point2", "point3", "summary", "cta"]
+    if request.section not in valid_sections:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid section: {request.section}. Must be one of {valid_sections}"
+        )
+
+    # 2. Validate duration
+    if not (1 <= request.duration <= 20):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid duration: {request.duration}. Must be 1-20 seconds."
+        )
+
+    # 3. Set default brand colors if not provided
+    brand_colors = request.brand_colors if request.brand_colors else DEFAULT_BRAND_COLORS
+
+    try:
+        # 4. Generate slide image
+        print(f"Generating slide: section={request.section}, duration={request.duration}s")
+        slide_img = create_slide(
+            text=request.text,
+            section_type=request.section,
+            duration=request.duration,
+            brand_colors=brand_colors,
+            icon=request.icon
+        )
+
+        # 5. Convert to base64
+        image_b64 = image_to_base64(slide_img)
+
+        # Calculate approximate size (base64 is ~1.33x original)
+        image_size = len(image_b64.encode('utf-8'))
+        print(f"Slide generated: {image_size} bytes (base64), section={request.section}")
+
+        # 6. Return response
+        return {
+            "success": True,
+            "section": request.section,
+            "duration": request.duration,
+            "imageData": image_b64,
+            "image_size_bytes": image_size,
+            "script_id": request.script_id,
+            "filename": f"slide_{request.section}.png",
+            "mimeType": "image/png"
+        }
+
+    except RuntimeError as e:
+        # Font loading error - explicit failure
+        raise HTTPException(
+            status_code=500,
+            detail=f"Font loading failed: {str(e)}"
+        )
+    except Exception as e:
+        # General error
+        raise HTTPException(
+            status_code=500,
+            detail=f"Slide generation failed: {str(e)}"
+        )
 
 
 @app.get("/health")
