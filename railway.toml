@@ -3,7 +3,7 @@
 
 [build]
 builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "workflows/wf7-video-renderer/Dockerfile.fastapi"
 
 [deploy]
 healthcheckPath = "/healthz"
