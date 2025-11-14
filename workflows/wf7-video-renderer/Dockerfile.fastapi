@@ -1,26 +1,27 @@
 FROM python:3.11-slim
 
-# ffmpegとフォントのインストール（診断出力追加 + fc-cache実行）
-RUN echo "=== Starting package installation ===" && \
+# ffmpegとフォントのインストール（エラーハンドリング強化版）
+RUN set -ex && \
+    echo "=== Starting package installation ===" && \
     apt-get update && \
-    echo "=== Installing packages ===" && \
+    echo "=== Installing ffmpeg and libmagic ===" && \
+    apt-get install -y ffmpeg libmagic1 fontconfig && \
+    echo "=== Installing Noto fonts ===" && \
     apt-get install -y \
-    ffmpeg \
-    libmagic1 \
-    fontconfig \
     fonts-noto-cjk \
     fonts-noto-cjk-extra \
     fonts-noto-color-emoji \
     fonts-noto-core && \
-    echo "=== Verifying font installation ===" && \
+    echo "=== CRITICAL: Verifying font package installation ===" && \
+    dpkg -l | grep fonts-noto || (echo "ERROR: fonts-noto packages not installed!" && exit 1) && \
+    echo "=== SUCCESS: Font packages installed ===" && \
     dpkg -l | grep fonts-noto && \
-    echo "=== Updating font cache (fc-cache -fv) ===" && \
+    echo "=== Updating font cache with fc-cache -fv ===" && \
     fc-cache -fv && \
-    echo "=== Listing font directories ===" && \
-    ls -la /usr/share/fonts/ || echo "Font directory not found" && \
-    ls -la /usr/share/fonts/truetype/ || echo "Truetype directory not found" && \
-    ls -la /usr/share/fonts/truetype/noto/ || echo "Noto directory not found" && \
-    echo "=== Font installation complete ===" && \
+    echo "=== Verifying font directories exist ===" && \
+    ls -la /usr/share/fonts/truetype/noto/ || (echo "ERROR: Noto truetype directory not found!" && exit 1) && \
+    echo "=== SUCCESS: Font installation verified ===" && \
+    ls -la /usr/share/fonts/truetype/noto/ && \
     rm -rf /var/lib/apt/lists/*
 
 # Python依存関係（FastAPIサーバー用）
