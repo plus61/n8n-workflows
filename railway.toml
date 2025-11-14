@@ -3,7 +3,7 @@
 
 [build]
 builder = "dockerfile"
-dockerfilePath = "Dockerfile.fastapi"
+dockerfilePath = "workflows/wf7-video-renderer/Dockerfile.fastapi"
 
 [deploy]
 startCommand = "python3 /app/render_server.py"

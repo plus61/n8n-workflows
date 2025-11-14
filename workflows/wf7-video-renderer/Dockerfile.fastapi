@@ -25,15 +25,15 @@ RUN set -ex && \
     rm -rf /var/lib/apt/lists/*
 
 # Python依存関係（FastAPIサーバー用）
-COPY requirements-server.txt /app/
+COPY workflows/wf7-video-renderer/requirements-server.txt /app/
 WORKDIR /app
 RUN pip install --no-cache-dir -r requirements-server.txt
 
 # アプリケーションコピー
-COPY render_server.py /app/
-COPY render_video_ffmpeg.py /app/
-COPY phase4c_ffmpeg_concat.py /app/
-COPY templates/ /app/templates/
+COPY workflows/wf7-video-renderer/render_server.py /app/
+COPY workflows/wf7-video-renderer/render_video_ffmpeg.py /app/
+COPY workflows/wf7-video-renderer/phase4c_ffmpeg_concat.py /app/
+COPY workflows/wf7-video-renderer/templates/ /app/templates/
 
 # 実行権限
 RUN chmod +x /app/render_server.py /app/render_video_ffmpeg.py
