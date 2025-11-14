@@ -1,43 +1,34 @@
-# WF7 Phase4 FastAPI Render Server
-# Standalone service for FFmpeg rendering
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
-# Install FFmpeg, Japanese fonts, and build dependencies for numpy
-RUN apk add --no-cache \
+# ffmpegインストール
+RUN apt-get update && apt-get install -y \
     ffmpeg \
-    font-noto-cjk \
-    fontconfig \
-    bash \
-    gcc \
-    musl-dev \
-    python3-dev \
-    py3-numpy
+    libmagic1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Update font cache
-RUN fc-cache -fv
-
-# Set working directory
+# 作業ディレクトリ作成
 WORKDIR /app
 
-# Copy requirements first for better caching
-# Use system numpy and install other packages
-RUN pip install --no-cache-dir \
-    fastapi==0.109.0 \
-    uvicorn[standard]==0.27.0 \
-    pydantic==2.5.3 \
-    python-multipart==0.0.6 \
-    Pillow==10.2.0
+# Python依存関係（FastAPIサーバー用）
+COPY workflows/wf7-video-renderer/requirements-server.txt /app/
+RUN pip install --no-cache-dir -r requirements-server.txt
 
-# Copy application files
-COPY workflows/wf7-video-renderer/render_server.py /app/render_server.py
-COPY workflows/wf7-video-renderer/render_video_ffmpeg.py /app/render_video_ffmpeg.py
-COPY workflows/wf7-video-renderer/templates /app/templates
+# アプリケーションコピー
+COPY workflows/wf7-video-renderer/render_server.py /app/
+COPY workflows/wf7-video-renderer/render_video_ffmpeg.py /app/
+COPY workflows/wf7-video-renderer/phase4c_ffmpeg_concat.py /app/
+COPY workflows/wf7-video-renderer/templates/ /app/templates/
 
-# Make scripts executable
+# 実行権限
 RUN chmod +x /app/render_server.py /app/render_video_ffmpeg.py
 
-# Expose port 8000
+# ポート公開（RailwayのPORT環境変数を使用）
 EXPOSE 8000
 
-# Run the FastAPI server
-CMD ["python3", "/app/render_server.py"]
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# FastAPIサーバー起動
+ENTRYPOINT ["python3", "/app/render_server.py"]
