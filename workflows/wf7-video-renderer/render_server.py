@@ -530,6 +530,27 @@ async def test_fonts():
             "error": str(e)
         })
 
+    # Test 4: List installed fonts in common directories
+    font_directories = [
+        "/usr/share/fonts/truetype/noto/",
+        "/usr/share/fonts/opentype/noto/",
+        "/usr/share/fonts/truetype/",
+        "/usr/share/fonts/",
+    ]
+
+    results["installed_fonts"] = {}
+
+    for font_dir in font_directories:
+        if os.path.exists(font_dir):
+            try:
+                files = os.listdir(font_dir)
+                font_files = [f for f in files if f.endswith(('.ttf', '.ttc', '.otf'))]
+                results["installed_fonts"][font_dir] = font_files[:20]  # Limit to 20 files
+            except Exception as e:
+                results["installed_fonts"][font_dir] = {"error": str(e)}
+        else:
+            results["installed_fonts"][font_dir] = "directory_not_found"
+
     # Overall status
     all_passed = all(
         test.get("status") == "success" or test.get("exists") == True
