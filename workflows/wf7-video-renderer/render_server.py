@@ -8,6 +8,7 @@ import base64
 import json
 import tempfile
 import subprocess
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
@@ -16,8 +17,17 @@ import uvicorn
 import io
 import textwrap
 from PIL import Image, ImageDraw, ImageFont
+import cloudinary
+import cloudinary.uploader
 
 app = FastAPI(title="WF7 FFmpeg Video Renderer")
+
+# Cloudinary設定（Phase4a用）
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+)
 
 # Phase4a スライド生成用の定数
 # フォント設定（Railway環境 - fontconfigで自動解決）
@@ -135,6 +145,62 @@ def image_to_base64(img: Image.Image) -> str:
     img.save(buffer, format='PNG')
     buffer.seek(0)
     return base64.b64encode(buffer.read()).decode()
+
+
+def upload_image_to_cloudinary(img: Image.Image, section: str, script_id: str) -> str:
+    """
+    Upload PIL Image to Cloudinary and return public URL
+
+    Args:
+        img: PIL Image object to upload
+        section: Section name (hook, intro, point1, etc.)
+        script_id: Notion script ID for folder organization
+
+    Returns:
+        str: Cloudinary public URL (https://res.cloudinary.com/...)
+
+    Raises:
+        RuntimeError: If Cloudinary credentials are not configured
+        Exception: If upload fails
+    """
+    # Validate Cloudinary configuration
+    if not all([
+        os.getenv("CLOUDINARY_CLOUD_NAME"),
+        os.getenv("CLOUDINARY_API_KEY"),
+        os.getenv("CLOUDINARY_API_SECRET")
+    ]):
+        raise RuntimeError(
+            "Cloudinary credentials not configured. Set CLOUDINARY_CLOUD_NAME, "
+            "CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables."
+        )
+
+    # Convert PIL Image to bytes
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+
+    # Upload to Cloudinary
+    # Folder structure: wf7-slides/{script_id}/{section}
+    folder = f"wf7-slides/{script_id}"
+    public_id = f"{section}"
+
+    try:
+        upload_result = cloudinary.uploader.upload(
+            buffer,
+            folder=folder,
+            public_id=public_id,
+            resource_type="image",
+            overwrite=True,  # Overwrite if already exists
+            format="png"
+        )
+
+        # Return secure URL
+        image_url = upload_result.get("secure_url")
+        print(f"✅ Uploaded to Cloudinary: {image_url}")
+        return image_url
+
+    except Exception as e:
+        raise Exception(f"Cloudinary upload failed: {str(e)}")
 
 
 class Asset(BaseModel):
@@ -624,19 +690,28 @@ async def generate_slide_endpoint(request: GenerateSlideRequest):
             icon=request.icon
         )
 
-        # 5. Convert to base64
+        # 5. Upload to Cloudinary (primary)
+        try:
+            image_url = upload_image_to_cloudinary(slide_img, request.section, request.script_id)
+        except Exception as cloudinary_error:
+            print(f"⚠️ Cloudinary upload failed: {cloudinary_error}")
+            # Fallback: Continue with base64-only response
+            image_url = None
+
+        # 6. Convert to base64 (backward compatibility)
         image_b64 = image_to_base64(slide_img)
 
         # Calculate approximate size (base64 is ~1.33x original)
         image_size = len(image_b64.encode('utf-8'))
         print(f"Slide generated: {image_size} bytes (base64), section={request.section}")
 
-        # 6. Return response
+        # 7. Return response with image_url (Phase4b compatible)
         return {
             "success": True,
             "section": request.section,
             "duration": request.duration,
-            "imageData": image_b64,
+            "image_url": image_url,  # ✅ NEW: Cloudinary URL for Phase4b
+            "imageData": image_b64,  # Backward compatibility
             "image_size_bytes": image_size,
             "script_id": request.script_id,
             "filename": f"slide_{request.section}.png",

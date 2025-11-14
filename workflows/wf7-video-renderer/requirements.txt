@@ -8,3 +8,6 @@ imageio==2.9.0
 imageio-ffmpeg==0.4.5
 requests==2.31.0
 
+# Cloudinary for image upload (Phase4a)
+cloudinary==1.36.0
+
