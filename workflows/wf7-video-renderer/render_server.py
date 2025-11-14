@@ -563,6 +563,78 @@ async def test_fonts():
 
 if __name__ == "__main__":
     import os
+
+    # === フォント診断情報をログ出力 ===
+    print("\n" + "=" * 60)
+    print("フォントインストール状況診断")
+    print("=" * 60)
+
+    # 1. インストール済みパッケージ確認
+    print("\n[1] fonts-noto関連パッケージ確認:")
+    try:
+        result = subprocess.run(
+            ["dpkg", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        noto_packages = [line for line in result.stdout.split('\n') if 'fonts-noto' in line]
+        if noto_packages:
+            for pkg in noto_packages:
+                print(f"  {pkg}")
+        else:
+            print("  ❌ fonts-notoパッケージが見つかりません")
+    except Exception as e:
+        print(f"  ❌ dpkgコマンド実行失敗: {e}")
+
+    # 2. フォントディレクトリの確認
+    print("\n[2] フォントディレクトリ確認:")
+    font_dirs = [
+        "/usr/share/fonts/",
+        "/usr/share/fonts/truetype/",
+        "/usr/share/fonts/truetype/noto/",
+        "/usr/share/fonts/opentype/noto/"
+    ]
+    for font_dir in font_dirs:
+        if os.path.exists(font_dir):
+            try:
+                files = os.listdir(font_dir)
+                font_files = [f for f in files if f.endswith(('.ttf', '.ttc', '.otf'))]
+                print(f"  ✅ {font_dir}: {len(files)}個のファイル ({len(font_files)}個のフォント)")
+                if font_files:
+                    for f in font_files[:5]:  # 最初の5個のみ表示
+                        print(f"     - {f}")
+            except Exception as e:
+                print(f"  ⚠️ {font_dir}: エラー - {e}")
+        else:
+            print(f"  ❌ {font_dir}: ディレクトリが存在しません")
+
+    # 3. fc-listでフォント確認
+    print("\n[3] fontconfig (fc-list) 確認:")
+    try:
+        result = subprocess.run(
+            ["fc-list", ":", "family"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            fonts = result.stdout.strip().split('\n')
+            noto_fonts = [f for f in fonts if 'Noto' in f]
+            print(f"  ✅ 合計 {len(fonts)} フォントファミリー検出")
+            if noto_fonts:
+                print(f"  ✅ Notoフォント: {len(noto_fonts)}個")
+                for f in noto_fonts[:10]:  # 最初の10個のみ表示
+                    print(f"     - {f}")
+            else:
+                print(f"  ❌ Notoフォントが見つかりません")
+        else:
+            print(f"  ❌ fc-list実行失敗: {result.stderr}")
+    except Exception as e:
+        print(f"  ❌ fc-listコマンド実行失敗: {e}")
+
+    print("=" * 60 + "\n")
+
     # Railway injects PORT environment variable - use it for healthcheck compatibility
     port = int(os.environ.get("PORT", 8000))
     print(f"🚀 Starting WF7 FFmpeg Video Renderer Server on port {port}...")
