@@ -439,6 +439,107 @@ async def health():
     return {"status": "healthy", "service": "wf7-ffmpeg-renderer"}
 
 
+@app.get("/test-fonts")
+async def test_fonts():
+    """
+    Test font loading for WF7 Phase4a
+    Validates that Noto Sans CJK fonts are properly installed and can be loaded
+    """
+    from PIL import ImageFont
+    import os
+
+    FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+    FONT_BOLD_PATH = "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
+
+    results = {
+        "service": "wf7-ffmpeg-renderer",
+        "test_type": "font_loading",
+        "tests": []
+    }
+
+    # Test 1: Font file existence
+    font_files = [
+        ("Regular", FONT_PATH),
+        ("Bold", FONT_BOLD_PATH)
+    ]
+
+    for font_name, font_path in font_files:
+        test_result = {
+            "font": font_name,
+            "path": font_path,
+            "exists": os.path.exists(font_path)
+        }
+
+        if test_result["exists"]:
+            test_result["size_mb"] = round(os.path.getsize(font_path) / (1024 * 1024), 2)
+
+        results["tests"].append(test_result)
+
+    # Test 2: Font loading
+    loading_tests = [
+        ("Regular 70pt", FONT_PATH, 70),
+        ("Bold 90pt", FONT_BOLD_PATH, 90),
+        ("Regular 40pt", FONT_PATH, 40),
+    ]
+
+    for test_name, font_path, font_size in loading_tests:
+        test_result = {
+            "test": test_name,
+            "path": font_path,
+            "size": font_size
+        }
+
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+            test_result["status"] = "success"
+            test_result["font_name"] = font.getname()
+        except Exception as e:
+            test_result["status"] = "failed"
+            test_result["error"] = str(e)
+
+        results["tests"].append(test_result)
+
+    # Test 3: Japanese text rendering
+    test_texts = [
+        "CTAがありません",
+        "フックテキストがありません",
+        "導入テキストがありません",
+    ]
+
+    try:
+        font = ImageFont.truetype(FONT_PATH, 70)
+
+        for text in test_texts:
+            bbox = font.getbbox(text)
+            width = bbox[2] - bbox[0]
+            height = bbox[3] - bbox[1]
+
+            test_result = {
+                "test": "japanese_rendering",
+                "text": text,
+                "width": width,
+                "height": height,
+                "status": "success" if width > 0 and height > 0 else "failed"
+            }
+            results["tests"].append(test_result)
+
+    except Exception as e:
+        results["tests"].append({
+            "test": "japanese_rendering",
+            "status": "failed",
+            "error": str(e)
+        })
+
+    # Overall status
+    all_passed = all(
+        test.get("status") == "success" or test.get("exists") == True
+        for test in results["tests"]
+    )
+    results["overall_status"] = "pass" if all_passed else "fail"
+
+    return results
+
+
 if __name__ == "__main__":
     import os
     # Railway injects PORT environment variable - use it for healthcheck compatibility
