@@ -492,6 +492,8 @@ async def generate_single_video_endpoint(request: GenerateSingleVideoRequest):
                 "-i", str(input_path),
                 "-t", str(request.duration),
                 "-c:v", "libx264",
+                "-preset", "fast",       # Encoding speed (fast, medium, slow)
+                "-crf", "23",           # Quality parameter (18-28, lower=better quality)
                 "-pix_fmt", "yuv420p",
                 "-vf", "scale=1080:1920",
                 "-r", "30",
