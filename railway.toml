@@ -6,7 +6,7 @@ builder = "dockerfile"
 dockerfilePath = "workflows/wf7-video-renderer/Dockerfile.fastapi"
 
 [deploy]
-healthcheckPath = "/healthz"
+healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
