@@ -1,12 +1,12 @@
-# Railway Configuration - n8n Service
+# Railway Configuration - FastAPI Service
 # https://docs.railway.app/reference/config-as-code
 
 [build]
 builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "workflows/wf7-video-renderer/Dockerfile.fastapi"
 
 [deploy]
-healthcheckPath = "/healthz"
+healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
