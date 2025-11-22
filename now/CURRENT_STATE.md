@@ -981,3 +981,35 @@ RuntimeError: Blocked for security reasons
 4. アカウントを選択し、権限を許可
 5. `token.json`が自動生成され、以降は認証不要
 
+---
+
+## 2025-11-22 18:54 - Google Sheets Ideasシートへのデータ追加対応
+
+### 状況分析
+- ❌ MCP Google Sheetsツールは利用不可（現在のMCPサーバーに含まれていない）
+- ✅ 代替案1: n8nワークフローでの実装を提案
+- ✅ 代替案2: 手動操作手順書を提供
+
+### 成果物
+- 📝 n8nワークフロー: `now/2025-11-22_18-54_add-idea-to-sheets-workflow.json`
+  - Webhook受信 → データ準備 → Google Sheets追加
+  - OAuth2認証対応（設定必要）
+  - 自動タイムスタンプ追加
+
+### 追加すべきデータ
+**対象Google Sheets**:
+- URL: `https://docs.google.com/spreadsheets/d/1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII/edit`
+- シート名: `Ideas`
+
+**データ内容**:
+| trending_keyword | segment | status | abstract | created_at |
+|-----------------|---------|--------|----------|------------|
+| TEST: n8nワークフロー自動化入門 | Cold | idea | n8nを使った業務自動化の基礎を学ぶ初心者向けガイド | 2025-11-22 18:54:46 JST |
+
+### 次のアクション
+1. **手動追加**: 上記URLにアクセスしてIdeasシートに手動で行を追加
+2. **n8n自動化**:
+   - ワークフローをn8nにインポート
+   - Google Sheets OAuth2認証を設定
+   - Webhookを有効化してcurlでテスト
+
