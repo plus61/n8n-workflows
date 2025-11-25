@@ -74,7 +74,7 @@ case $ACTION in
             }
         else
             # タスク名が見つからない場合は末尾に追記
-            echo "- **完了**: ${TIMESTAMP}" >> "$LOG_FILE"
+        echo "- **完了**: ${TIMESTAMP}" >> "$LOG_FILE"
         fi
         echo "✅ タスク完了を記録: $TASK_NAME ($TIMESTAMP)"
         ;;
