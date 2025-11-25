@@ -1,0 +1,357 @@
+{
+  "name": "WF10-Main: kie.ai Sora 2 ビデオ生成（Google Drive版）",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "database",
+        "databaseId": "2b368d5c29868175957ff890b8b27e93",
+        "event": "pageAdded",
+        "filters": {
+          "conditions": [
+            {
+              "property": "Status",
+              "value": "Pending Video Generation"
+            }
+          ]
+        }
+      },
+      "id": "notion-trigger",
+      "name": "Notion Trigger",
+      "type": "@n8n/n8n-nodes-langchain.notionTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "get",
+        "pageId": "={{ $json.id }}",
+        "simplifyProperties": true
+      },
+      "id": "get-notion-page",
+      "name": "Get Notion Page",
+      "type": "@n8n/n8n-nodes-langchain.notion",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "xxx",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.properties.Image_URL }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-image",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $json.fileName || 'image_' + Date.now() + '.jpg' }}",
+        "inputDataFieldName": "data",
+        "options": {
+          "parents": {
+            "parentId": ""
+          }
+        }
+      },
+      "id": "upload-to-google-drive",
+      "name": "Upload to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [850, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "permissionsInput": "defineRolePermissions",
+        "role": "reader",
+        "type": "anyone"
+      },
+      "id": "share-file",
+      "name": "Share File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1050, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "plniYONxQ1iPNoAi",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "image-direct-url",
+              "name": "image_direct_url",
+              "value": "=https://drive.google.com/uc?export=view&id={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "google-drive-id",
+              "name": "google_drive_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-direct-link",
+      "name": "Create Direct Link",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.kie.ai/api/v1/jobs/createTask",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.KIE_AI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"sora-2-image-to-video\",\n  \"input\": {\n    \"prompt\": $('Get Notion Page').item.json.properties.Prompt || \"高品質な動画を生成してください\",\n    \"image_urls\": [$json.image_direct_url],\n    \"aspect_ratio\": \"portrait\",\n    \"quality\": \"hd\",\n    \"duration\": 10\n  }\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "create-video-task",
+      "name": "Create Video Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "amount": 30
+      },
+      "id": "wait-30s",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1650, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.kie.ai/api/v1/jobs/getStatus?job_id={{ $('Create Video Task').item.json.job_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.KIE_AI_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-status",
+      "name": "Get Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "status-completed",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "Check Status",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {},
+      "id": "loop-back",
+      "name": "Loop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2250, 450]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "video-url",
+              "name": "video_url",
+              "value": "={{ $json.output.video_url }}",
+              "type": "string"
+            },
+            {
+              "id": "notion-page-id",
+              "name": "notion_page_id",
+              "value": "={{ $('Notion Trigger').item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-video-url",
+      "name": "Extract Video URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2250, 150]
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "update",
+        "pageId": "={{ $json.notion_page_id }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Video_URL",
+              "urlValue": "={{ $json.video_url }}"
+            },
+            {
+              "key": "Status",
+              "statusValue": "Completed"
+            }
+          ]
+        }
+      },
+      "id": "update-notion",
+      "name": "Update Notion",
+      "type": "@n8n/n8n-nodes-langchain.notion",
+      "typeVersion": 2,
+      "position": [2450, 150],
+      "credentials": {
+        "notionApi": {
+          "id": "xxx",
+          "name": "Notion API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Notion Trigger": {
+      "main": [[{"node": "Get Notion Page", "type": "main", "index": 0}]]
+    },
+    "Get Notion Page": {
+      "main": [[{"node": "Download Image", "type": "main", "index": 0}]]
+    },
+    "Download Image": {
+      "main": [[{"node": "Upload to Google Drive", "type": "main", "index": 0}]]
+    },
+    "Upload to Google Drive": {
+      "main": [[{"node": "Share File", "type": "main", "index": 0}]]
+    },
+    "Share File": {
+      "main": [[{"node": "Create Direct Link", "type": "main", "index": 0}]]
+    },
+    "Create Direct Link": {
+      "main": [[{"node": "Create Video Task", "type": "main", "index": 0}]]
+    },
+    "Create Video Task": {
+      "main": [[{"node": "Wait", "type": "main", "index": 0}]]
+    },
+    "Wait": {
+      "main": [[{"node": "Get Status", "type": "main", "index": 0}]]
+    },
+    "Get Status": {
+      "main": [[{"node": "Check Status", "type": "main", "index": 0}]]
+    },
+    "Check Status": {
+      "main": [
+        [{"node": "Extract Video URL", "type": "main", "index": 0}],
+        [{"node": "Loop", "type": "main", "index": 0}]
+      ]
+    },
+    "Loop": {
+      "main": [[{"node": "Wait", "type": "main", "index": 0}]]
+    },
+    "Extract Video URL": {
+      "main": [[{"node": "Update Notion", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-22T14:32:00.000Z",
+  "versionId": ""
+}

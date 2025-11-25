@@ -1,0 +1,39 @@
+{
+  "Assets": [
+    {
+      "assetTag": "test-hook-001",
+      "originalUrl": "https://images.pexels.com/photos/7193859/pexels-photo-7193859.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-hook-001.jpg"
+    },
+    {
+      "assetTag": "test-intro-001",
+      "originalUrl": "https://images.pexels.com/photos/1181345/pexels-photo-1181345.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-intro-001.jpg"
+    },
+    {
+      "assetTag": "test-point1-001",
+      "originalUrl": "https://images.pexels.com/photos/5668858/pexels-photo-5668858.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-point1-001.jpg"
+    },
+    {
+      "assetTag": "test-point2-001",
+      "originalUrl": "https://images.pexels.com/photos/7947664/pexels-photo-7947664.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-point2-001.jpg"
+    },
+    {
+      "assetTag": "test-point3-001",
+      "originalUrl": "https://images.pexels.com/photos/8849295/pexels-photo-8849295.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-point3-001.jpg"
+    },
+    {
+      "assetTag": "test-summary-001",
+      "originalUrl": "https://images.pexels.com/photos/3183186/pexels-photo-3183186.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-summary-001.jpg"
+    },
+    {
+      "assetTag": "test-cta-001",
+      "originalUrl": "https://images.pexels.com/photos/3183190/pexels-photo-3183190.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+      "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-cta-001.jpg"
+    }
+  ]
+}

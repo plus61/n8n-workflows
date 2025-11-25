@@ -1,0 +1,398 @@
+{
+  "name": "WF-A: Generate Note Drafts from Editorial Ideas",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "2e8baabd-607e-4da8-a5e9-3bf684a6d840",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-64, 64]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII",
+          "mode": "list",
+          "cachedResultName": "DMM MK",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "editorial",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "acbb3b40-2f8e-461b-8887-dc40d10d3bcb",
+      "name": "Google Sheets - Get Ideas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [160, -32],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "JrbsnH4HK5muVjaf",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Filter rows where status == 'idea'\nconst items = $input.all();\n\nreturn items\n  .filter(item => (item.json.status || item.json.Status) === 'idea')\n  .map(item => ({ json: item.json }));"
+      },
+      "id": "664adf84-1ab3-44db-90d8-ba123bdaa961",
+      "name": "Filter Ideas (status=idea)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [384, -32]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "project_name",
+              "name": "project_name",
+              "value": "Contents Engine講座",
+              "type": "string"
+            },
+            {
+              "id": "default_segment",
+              "name": "default_segment",
+              "value": "Cold",
+              "type": "string"
+            },
+            {
+              "id": "mdc_content",
+              "name": "mdc_content",
+              "value": "## 生成ルールの適用範囲（必ず最優先で適用すること）\n\nAIアシスタントは、この.mdcに記載されたすべてのルールを、  \n**あらゆる生成物（note記事、SNS投稿、LP、動画台本、メール、Belief、分析）に対し、最優先で適用してください。**\n\nプロンプトで追加指示があった場合でも、優先順位は次の通りとします：\n\n1. この.mdcのルール（最優先）\n2. セグメント別コンテンツ生成ルール（Cold/Middle/Hot/Current）\n3. プロンプト内での追加指示（最下位）\n\nプロンプトの内容と矛盾する場合は、  \n**「mdcの優先ルールに従い、○○と解釈します」** と自動補正してください。",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "39dff777-9a79-494b-9c35-0ce2e6888e24",
+      "name": "Project Config A",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [384, 160]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "1da1624d-f8f0-4f31-a581-e6f362a38b64",
+      "name": "Merge Ideas + Config",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [608, 64]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": {\"type\": \"json_object\"},\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"あなたはマーケティングコンテンツの専門編集者です。以下はこのプロジェクト専用のルールファイル（.mdc）の内容です。これに書かれた指示を最優先で守ってください。\\n\\n==== プロジェクトルール（.mdc） ====\\n\" + $json.mdc_content + \"\\n==============================\\n\\n- セグメント別コンテンツ生成ルール\\n- Belief構造（b1〜b5）\\n- ターゲット／USP／悩み・痛み\\n\\nを前提に、note記事の本文を生成します。出力は必ず JSON 形式 {\\\"title\\\": string, \\\"body\\\": string, \\\"segment\\\": string} にしてください。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"【セグメント】\\n\" + ($json.segment || $json.default_segment || \"Cold\") +\n                 \"\\n\\n【キーワード】\\n\" + ($json.trending_keyword || \"\") +\n                 \"\\n\\n【参考ニュースサマリー】\\n\" + ($json.abstract || \"\") +\n                 \"\\n\\n【出力フォーマット】\\n- note用タイトル（32文字前後、日本語）\\n- 本文（見出し・段落構成のMarkdown。スマホで読みやすいように改行多め）\\n- 冒頭はスクロールストップを意識した一文から始めること\\n- 最後に、次のアクション（LINE登録 or 別記事への誘導など）を1行だけ入れること\\n\\n【条件】\\n- セグメントルール（\" + ($json.segment || $json.default_segment || \"Cold\") + \"）を必ず適用\\n- DMMモデル／Belief構造と矛盾しないように書く\\n- 文字数目安：1500〜2500字（SEOを意識したnote記事）\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "0c1a956b-bb77-4fb1-a01a-a890cc687c0a",
+      "name": "OpenAI - Generate Note Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [832, 64],
+      "credentials": {
+        "openAiApi": {
+          "id": "aWGOKXo23vBQe9xs",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response JSON with validation\nconst res = $input.first().json;\n\nlet content = res.choices?.[0]?.message?.content || '{}';\nlet parsed;\nlet validationErrors = [];\n\ntry {\n  parsed = JSON.parse(content);\n  \n  // Schema validation\n  if (!parsed.title || typeof parsed.title !== 'string') {\n    validationErrors.push('title is missing or invalid');\n  }\n  if (!parsed.body || typeof parsed.body !== 'string') {\n    validationErrors.push('body is missing or invalid');\n  }\n  if (!parsed.segment || !['Cold', 'Middle', 'Hot', 'Current'].includes(parsed.segment)) {\n    validationErrors.push('segment is missing or invalid (must be Cold/Middle/Hot/Current)');\n  }\n  \n  // If validation fails, use fallback\n  if (validationErrors.length > 0) {\n    throw new Error('Schema validation failed: ' + validationErrors.join(', '));\n  }\n  \n} catch (e) {\n  parsed = {\n    title: 'タイトル生成エラー',\n    body: content,\n    segment: $json.segment || $json.default_segment || 'Cold',\n    validation_error: e.message,\n  };\n}\n\nreturn {\n  json: {\n    ...$json,\n    generated_title: parsed.title,\n    generated_body: parsed.body,\n    generated_segment: parsed.segment || ($json.segment || $json.default_segment || 'Cold'),\n    status: 'draft-generated',\n    validation_error: parsed.validation_error || null,\n  },\n};"
+      },
+      "id": "b0314dc9-bba1-4219-8c41-05610e63e335",
+      "name": "Parse OpenAI Note JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1056, -8],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII",
+          "mode": "list",
+          "cachedResultName": "DMM MK",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "editorial",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "4c6beeeb-0aa8-4c6a-84a6-dabd37e7d170",
+      "name": "Google Sheets - Update Draft Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1280, -80],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "JrbsnH4HK5muVjaf",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": {
+          "__rl": true,
+          "value": "#content-ops",
+          "mode": "name"
+        },
+        "text": "=【noteドラフト生成】\nキーワード: {{ $json.trending_keyword || \"\" }}\nセグメント: {{ $json.generated_segment || \"\" }}\nタイトル案: {{ $json.generated_title || \"\" }}\n\n本文（一部抜粋）:\n{{ ($json.generated_body || \"\").substring(0, 300) }}...\n\nEditorialシートで内容を確認・編集してください。",
+        "otherOptions": {}
+      },
+      "id": "9b2087e0-6b39-40fc-8656-ee96c93784e9",
+      "name": "Slack Notify - New Draft",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1504, -128],
+      "credentials": {
+        "slackApi": {
+          "id": "DI2MYqiUeiPGDCjk",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// エラーハンドリング関数\nconst errorData = $input.first().json;\nconst failedNode = errorData.node || 'Unknown Node';\nconst errorMessage = errorData.error?.message || JSON.stringify(errorData.error) || 'Unknown Error';\nconst timestamp = new Date().toISOString();\n\nreturn {\n  json: {\n    channel: '#content-ops',\n    text: `⚠️ *WF-A エラー発生*\\n\\n*Failed Node:* ${failedNode}\\n*Error:* ${errorMessage}\\n*Time:* ${timestamp}\\n*Workflow:* Generate Note Drafts from Editorial Ideas`\n  }\n};"
+      },
+      "id": "error-handler-wf-a",
+      "name": "Error Handler - WF-A",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1504, 112]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": {
+          "__rl": true,
+          "value": "={{ $json.channel }}",
+          "mode": "name"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {}
+      },
+      "id": "slack-error-notify-wf-a",
+      "name": "Slack Error Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1728, 112],
+      "credentials": {
+        "slackApi": {
+          "id": "DI2MYqiUeiPGDCjk",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weekDay": 1,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-wf-a",
+      "name": "Schedule - Every Monday 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-64, -128]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Get Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Get Ideas": {
+      "main": [
+        [
+          {
+            "node": "Filter Ideas (status=idea)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Ideas (status=idea)": {
+      "main": [
+        [
+          {
+            "node": "Merge Ideas + Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project Config A": {
+      "main": [
+        [
+          {
+            "node": "Merge Ideas + Config",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Ideas + Config": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Generate Note Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Generate Note Draft": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI Note JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Error Handler - WF-A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI Note JSON": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Draft Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Error Handler - WF-A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Update Draft Row": {
+      "main": [
+        [
+          {
+            "node": "Slack Notify - New Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Error Handler - WF-A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler - WF-A": {
+      "main": [
+        [
+          {
+            "node": "Slack Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Every Monday 9AM": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Get Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

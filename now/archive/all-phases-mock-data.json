@@ -1,0 +1,132 @@
+{
+  "Phase1": {
+    "TaskID": "1234567890abcdef12345678",
+    "Script": {
+      "title": "【テスト】SNS動画自動生成フロー検証",
+      "segments": [
+        {
+          "type": "hook",
+          "duration": 3,
+          "subtitle": "これが未来の動画制作",
+          "assetTag": "test-hook-001"
+        },
+        {
+          "type": "intro",
+          "duration": 10,
+          "subtitle": "効率化がもたらす変革",
+          "assetTag": "test-intro-001"
+        },
+        {
+          "type": "point1",
+          "duration": 13,
+          "subtitle": "作業時間を70%削減した実例",
+          "assetTag": "test-point1-001"
+        },
+        {
+          "type": "point2",
+          "duration": 13,
+          "subtitle": "品質を保ちながら高速化",
+          "assetTag": "test-point2-001"
+        },
+        {
+          "type": "point3",
+          "duration": 14,
+          "subtitle": "AIがもたらす新しい価値",
+          "assetTag": "test-point3-001"
+        },
+        {
+          "type": "summary",
+          "duration": 20,
+          "subtitle": "自動化で変わる未来の働き方",
+          "assetTag": "test-summary-001"
+        },
+        {
+          "type": "cta",
+          "duration": 7,
+          "subtitle": "今すぐ試してみよう！",
+          "assetTag": "test-cta-001"
+        }
+      ]
+    }
+  },
+  "Phase2": {
+    "Assets": [
+      {
+        "assetTag": "test-hook-001",
+        "originalUrl": "https://images.pexels.com/photos/7193859/pexels-photo-7193859.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-hook-001.jpg"
+      },
+      {
+        "assetTag": "test-intro-001",
+        "originalUrl": "https://images.pexels.com/photos/1181345/pexels-photo-1181345.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-intro-001.jpg"
+      },
+      {
+        "assetTag": "test-point1-001",
+        "originalUrl": "https://images.pexels.com/photos/5668858/pexels-photo-5668858.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-point1-001.jpg"
+      },
+      {
+        "assetTag": "test-point2-001",
+        "originalUrl": "https://images.pexels.com/photos/7947664/pexels-photo-7947664.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-point2-001.jpg"
+      },
+      {
+        "assetTag": "test-point3-001",
+        "originalUrl": "https://images.pexels.com/photos/8849295/pexels-photo-8849295.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-point3-001.jpg"
+      },
+      {
+        "assetTag": "test-summary-001",
+        "originalUrl": "https://images.pexels.com/photos/3183186/pexels-photo-3183186.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-summary-001.jpg"
+      },
+      {
+        "assetTag": "test-cta-001",
+        "originalUrl": "https://images.pexels.com/photos/3183190/pexels-photo-3183190.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "cloudinaryUrl": "https://res.cloudinary.com/demo/image/upload/v1731726000/test-cta-001.jpg"
+      }
+    ]
+  },
+  "Phase3": {
+    "Audio": {
+      "segments": [
+        {
+          "assetTag": "test-hook-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-hook-001.mp3",
+          "subtitle": "これが未来の動画制作"
+        },
+        {
+          "assetTag": "test-intro-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-intro-001.mp3",
+          "subtitle": "効率化がもたらす変革"
+        },
+        {
+          "assetTag": "test-point1-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-point1-001.mp3",
+          "subtitle": "作業時間を70%削減した実例"
+        },
+        {
+          "assetTag": "test-point2-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-point2-001.mp3",
+          "subtitle": "品質を保ちながら高速化"
+        },
+        {
+          "assetTag": "test-point3-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-point3-001.mp3",
+          "subtitle": "AIがもたらす新しい価値"
+        },
+        {
+          "assetTag": "test-summary-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-summary-001.mp3",
+          "subtitle": "自動化で変わる未来の働き方"
+        },
+        {
+          "assetTag": "test-cta-001",
+          "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-cta-001.mp3",
+          "subtitle": "今すぐ試してみよう！"
+        }
+      ]
+    }
+  }
+}

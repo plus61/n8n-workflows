@@ -1,0 +1,293 @@
+{
+  "meta": {
+    "created_at": "2025-11-23 21:45:40 JST",
+    "purpose": "WF10ワークフロー用Google Sheetsノード設定（2ノード構成）",
+    "template_source": "n8n-mcp template: Generate AI Viral Videos (214,907 views)",
+    "workflow_integration": "Create Video Task直後 + Poll Video Status成功後"
+  },
+  "nodes": [
+    {
+      "node_name": "Save Video Request",
+      "description": "動画生成リクエストの即時記録（Create Video Task成功直後）",
+      "position": "Create Video Task → このノード → Poll Video Status",
+      "configuration": {
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "",
+            "__comment": "Google SheetsのドキュメントIDを入力（例: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms）"
+          },
+          "sheetName": {
+            "__rl": true,
+            "mode": "id",
+            "value": "Video_Production_Log",
+            "__comment": "シート名を指定"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "task_id": "={{ $json.taskId }}",
+              "request_time": "={{ $now.toISO() }}",
+              "prompt": "={{ $('Upload to Google Drive').item.json.prompt }}",
+              "image_url": "={{ $('Create Direct Link').item.json.directLink }}",
+              "status": "processing",
+              "aspect_ratio": "9:16",
+              "model": "veo-3.1",
+              "video_url": "",
+              "completion_time": "",
+              "duration_seconds": ""
+            },
+            "schema": [
+              {
+                "id": "task_id",
+                "type": "string",
+                "displayName": "task_id",
+                "required": false,
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "request_time",
+                "type": "string",
+                "displayName": "request_time",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "prompt",
+                "type": "string",
+                "displayName": "prompt",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "image_url",
+                "type": "string",
+                "displayName": "image_url",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "status",
+                "type": "string",
+                "displayName": "status",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "aspect_ratio",
+                "type": "string",
+                "displayName": "aspect_ratio",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "model",
+                "type": "string",
+                "displayName": "model",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "video_url",
+                "type": "string",
+                "displayName": "video_url",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "completion_time",
+                "type": "string",
+                "displayName": "completion_time",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "duration_seconds",
+                "type": "number",
+                "displayName": "duration_seconds",
+                "required": false,
+                "canBeUsedToMatch": false
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [1200, 400],
+        "id": "save-video-request-sheets",
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "YOUR_CREDENTIAL_ID",
+            "name": "Google Sheets account"
+          }
+        }
+      }
+    },
+    {
+      "node_name": "Update Video Record",
+      "description": "動画完成後のステータス更新（Poll Video Status成功後）",
+      "position": "Poll Video Status → このノード → （次のノード）",
+      "configuration": {
+        "parameters": {
+          "operation": "update",
+          "documentId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "",
+            "__comment": "Save Video Requestと同じドキュメントIDを使用"
+          },
+          "sheetName": {
+            "__rl": true,
+            "mode": "id",
+            "value": "Video_Production_Log",
+            "__comment": "Save Video Requestと同じシート名を使用"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "matchingColumns": ["task_id"],
+            "value": {
+              "task_id": "={{ $('Save Video Request').first().json.task_id }}",
+              "status": "completed",
+              "video_url": "={{ $json.videoUrl }}",
+              "completion_time": "={{ $now.toISO() }}",
+              "duration_seconds": "={{ Math.floor($now.diff($('Save Video Request').first().json.request_time, 'seconds')) }}"
+            },
+            "schema": [
+              {
+                "id": "task_id",
+                "type": "string",
+                "displayName": "task_id",
+                "required": false,
+                "canBeUsedToMatch": true,
+                "defaultMatch": false
+              },
+              {
+                "id": "status",
+                "type": "string",
+                "displayName": "status",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "video_url",
+                "type": "string",
+                "displayName": "video_url",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "completion_time",
+                "type": "string",
+                "displayName": "completion_time",
+                "required": false,
+                "canBeUsedToMatch": false
+              },
+              {
+                "id": "duration_seconds",
+                "type": "number",
+                "displayName": "duration_seconds",
+                "required": false,
+                "canBeUsedToMatch": false
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [1600, 400],
+        "id": "update-video-record-sheets",
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "YOUR_CREDENTIAL_ID",
+            "name": "Google Sheets account"
+          }
+        }
+      }
+    }
+  ],
+  "google_sheets_setup": {
+    "step_1_create_spreadsheet": {
+      "spreadsheet_name": "WF10_Video_Production_Log",
+      "sheet_name": "Video_Production_Log",
+      "url": "https://docs.google.com/spreadsheets/",
+      "action": "新規スプレッドシート作成"
+    },
+    "step_2_add_headers": {
+      "row_1_headers": [
+        "task_id",
+        "request_time",
+        "prompt",
+        "image_url",
+        "status",
+        "aspect_ratio",
+        "model",
+        "video_url",
+        "completion_time",
+        "duration_seconds"
+      ],
+      "action": "A1:J1 にヘッダー行を手動入力"
+    },
+    "step_3_get_spreadsheet_id": {
+      "location": "URLの /d/ の後の文字列",
+      "example": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+      "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+      "action": "このIDを両ノードのdocumentId.valueに設定"
+    },
+    "step_4_n8n_credential": {
+      "type": "Google Sheets OAuth2 API",
+      "action": "n8n UIでCredentials → Add Credential → Google Sheets OAuth2 API",
+      "scope_required": [
+        "https://www.googleapis.com/auth/spreadsheets"
+      ],
+      "note": "作成後、credential IDを両ノードのcredentials.googleSheetsOAuth2Api.idに設定"
+    }
+  },
+  "implementation_checklist": {
+    "pre_deployment": [
+      "✅ Google Sheetsスプレッドシート作成完了",
+      "✅ ヘッダー行（A1:J1）設定完了",
+      "✅ Spreadsheet ID取得完了",
+      "✅ n8n Google Sheets OAuth2認証完了",
+      "✅ 両ノードのdocumentId.value設定完了",
+      "✅ 両ノードのcredential ID設定完了"
+    ],
+    "post_deployment": [
+      "⏳ Save Video Requestノード単体テスト（Create Video Task実行後）",
+      "⏳ Google Sheetsに初期レコード追加確認",
+      "⏳ Update Video Recordノード単体テスト（Poll Video Status成功後）",
+      "⏳ Google Sheetsでstatus=completed & video_url更新確認",
+      "⏳ E2Eテスト実行（Webhook → 全ノード → Sheets完全記録）"
+    ]
+  },
+  "error_handling": {
+    "save_video_request_failure": {
+      "impact": "Sheets記録失敗だが、ワークフロー継続可能",
+      "recommendation": "continueOnFail: true 設定推奨"
+    },
+    "update_video_record_failure": {
+      "impact": "video_url記録失敗、手動補完が必要",
+      "recovery": "task_idでレコード検索し、Poll Video StatusノードのvideoUrlを手動入力"
+    },
+    "matching_column_not_found": {
+      "cause": "Save Video Requestが実行されていない、またはtask_idが一致しない",
+      "solution": "Save Video Requestの実行確認、task_id式の検証"
+    }
+  },
+  "mcp_template_reference": {
+    "source_template": "Generate AI Viral Videos with Seedance and Upload to TikTok, YouTube & Instagram",
+    "template_views": 214907,
+    "complexity": "medium",
+    "learned_patterns": [
+      "append操作で初期記録、update操作で完了時更新（2段階記録）",
+      "matchingColumnsで既存レコード特定（idやideaカラム）",
+      "mappingMode: defineBelow でカラムマッピング明示",
+      "schema配列でカラム定義（type, displayName, canBeUsedToMatch）",
+      "タイムスタンプは $now.toISO() で記録",
+      "クロスノード参照は $('NodeName').first().json.field で取得"
+      ]
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "name": "WF10-Main: Runway Gen-3 ビデオ生成（fal.ai Queue API）",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "test-image-url",
+              "name": "画像素材URL",
+              "value": "=[\"https://images.unsplash.com/photo-1506905925346-21bda4d32df4\"]",
+              "type": "array"
+            },
+            {
+              "id": "test-script",
+              "name": "台本本文",
+              "value": "A serene landscape with mountains and clear blue sky, camera slowly panning from left to right",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-test-data",
+      "name": "Set - Test Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/runway-gen3/turbo/image-to-video?fal_webhook=https://n8n-python-production-344b.up.railway.app/webhook/wf10-runway-webhook",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"image_url\": $json.画像素材URL[0],\n  \"prompt\": $json.台本本文,\n  \"duration\": 10,\n  \"ratio\": \"16:9\"\n} }}"
+      },
+      "id": "http-request-runway",
+      "name": "HTTP Request - Runway Gen-3 API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fal-api-key",
+          "name": "fal.ai API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "queue-position",
+              "name": "queue_position",
+              "value": "={{ $json.queue_position }}",
+              "type": "number"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $json.response_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-response-parse",
+      "name": "Set - Response Parse",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Test Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Runway Gen-3 API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Runway Gen-3 API": {
+      "main": [
+        [
+          {
+            "node": "Set - Response Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-15T14:46:01.000Z",
+  "versionId": "v2b-有効画像URL"
+}

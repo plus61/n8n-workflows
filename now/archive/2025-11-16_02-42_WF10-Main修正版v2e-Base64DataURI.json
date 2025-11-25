@@ -1,0 +1,234 @@
+{
+  "name": "WF10-Main: Runway Gen-3 ビデオ生成（Base64 Data URI方式）",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "google-drive-file-id",
+              "name": "google_drive_file_id",
+              "value": "13uo0kLmfHFx0HE6pDqlN16qGysSrSKbg",
+              "type": "string"
+            },
+            {
+              "id": "test-script",
+              "name": "台本本文",
+              "value": "A serene landscape with mountains and clear blue sky, camera slowly panning from left to right",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-test-data",
+      "name": "Set - Test Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ \"https://drive.google.com/uc?export=download&id=\" + $json.google_drive_file_id }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-download-image",
+      "name": "HTTP Request - Download Image from Google Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Google Driveからダウンロードした画像をBase64 Data URIに変換\nconst binaryData = $input.first().binary.data;\n\nif (!binaryData) {\n  throw new Error('No binary data found');\n}\n\n// バイナリデータをBase64エンコード\nconst base64Data = binaryData.data;\n\n// MIMEタイプを取得（デフォルトはimage/png）\nconst mimeType = binaryData.mimeType || 'image/png';\n\n// Data URI形式に変換\nconst dataUri = `data:${mimeType};base64,${base64Data}`;\n\n// 台本本文も取得\nconst prompt = $('Set - Test Data').first().json.台本本文;\n\nreturn {\n  image_data_uri: dataUri,\n  prompt: prompt,\n  original_mime_type: mimeType,\n  data_size_kb: Math.round(base64Data.length / 1024)\n};"
+      },
+      "id": "code-convert-base64",
+      "name": "Code - Convert to Base64 Data URI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/runway-gen3/turbo/image-to-video?fal_webhook=https://n8n-python-production-344b.up.railway.app/webhook/wf10-runway-webhook",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"image_url\": $json.image_data_uri,\n  \"prompt\": $json.prompt,\n  \"duration\": 10,\n  \"ratio\": \"16:9\"\n} }}"
+      },
+      "id": "http-request-runway",
+      "name": "HTTP Request - Runway Gen-3 API (Base64)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fal-api-key",
+          "name": "fal.ai API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "queue-position",
+              "name": "queue_position",
+              "value": "={{ $json.queue_position }}",
+              "type": "number"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $json.response_url }}",
+              "type": "string"
+            },
+            {
+              "id": "image-size-kb",
+              "name": "image_size_kb",
+              "value": "={{ $('Code - Convert to Base64 Data URI').first().json.data_size_kb }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-response-parse",
+      "name": "Set - Response Parse",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1340,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Test Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Download Image from Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Download Image from Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Code - Convert to Base64 Data URI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Convert to Base64 Data URI": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Runway Gen-3 API (Base64)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Runway Gen-3 API (Base64)": {
+      "main": [
+        [
+          {
+            "node": "Set - Response Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-16T02:42:26.000Z",
+  "versionId": "v2e-Base64DataURI"
+}

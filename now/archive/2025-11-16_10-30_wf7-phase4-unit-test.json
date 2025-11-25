@@ -1,0 +1,339 @@
+{
+  "name": "WF7 Phase4 - Unit Test (Mock Data)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * WF7 Phase4: Creatomate RenderScript生成ロジック（単体テスト用）\n *\n * 作成日時: 2025-11-16 10:30:37 JST\n *\n * 目的:\n * 統合モックデータ（Phase1/2/3を含む単一JSON）から、\n * Creatomate APIに送信するRenderScriptを動的に生成する。\n *\n * 入力:\n * - $input.first().json.Phase1.Script: Script JSON（7セグメント構成）\n * - $input.first().json.Phase2.Assets: 画像データ配列（assetTag → originalUrl）\n * - $input.first().json.Phase3.Audio: 音声・字幕データ（assetTag → audioUrl）\n *\n * 出力:\n * - renderScript: Creatomate RenderScript JSON\n */\n\n// ===========================\n// 1. 入力データの取得と検証\n// ===========================\n\n// 統合モックデータから各Phaseのデータを取得\nconst phase1Data = $input.first().json.Phase1;\nconst phase2Data = $input.first().json.Phase2;\nconst phase3Data = $input.first().json.Phase3;\n\n// Phase1: Script JSON（7セグメント構成）\nconst scriptData = phase1Data.Script;\nif (!scriptData || !scriptData.segments || !Array.isArray(scriptData.segments)) {\n  throw new NodeOperationError(\n    this.getNode(),\n    'Phase1のScript JSONが不正です。segments配列が見つかりません。'\n  );\n}\n\nconst segments = scriptData.segments;\nif (segments.length === 0) {\n  throw new NodeOperationError(\n    this.getNode(),\n    'Phase1のScript JSONにセグメントが含まれていません。'\n  );\n}\n\n// Phase2: 画像データ配列\nconst assetsData = phase2Data.Assets;\nif (!assetsData || !Array.isArray(assetsData)) {\n  throw new NodeOperationError(\n    this.getNode(),\n    'Phase2のAssets JSONが不正です。Assets配列が見つかりません。'\n  );\n}\n\n// Phase3: 音声・字幕データ\nconst audioData = phase3Data.Audio;\nif (!audioData || !audioData.segments || !Array.isArray(audioData.segments)) {\n  throw new NodeOperationError(\n    this.getNode(),\n    'Phase3のAudio JSONが不正です。segments配列が見つかりません。'\n  );\n}\n\n// ===========================\n// 2. assetTagベースのマッピング\n// ===========================\n\n// Phase2: assetTag → Asset（画像データ）のマップを作成\nconst assetMap = {};\nassetsData.forEach(asset => {\n  if (asset.assetTag) {\n    assetMap[asset.assetTag] = asset;\n  }\n});\n\n// Phase3: assetTag → AudioSegment（音声データ）のマップを作成\nconst audioMap = {};\naudioData.segments.forEach(audioSegment => {\n  if (audioSegment.assetTag) {\n    audioMap[audioSegment.assetTag] = audioSegment;\n  }\n});\n\n// ===========================\n// 3. RenderScript elements配列の生成\n// ===========================\n\nconst elements = [];\nconst trackImage = 1;\nconst trackText = 2;\nconst trackAudio = 3;\n\nlet currentTime = 0; // 現在の時間（秒）\n\nsegments.forEach((segment, index) => {\n  const { type, duration, subtitle, assetTag } = segment;\n\n  // 必須フィールドの検証\n  if (!assetTag) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `セグメント${index + 1}（type: ${type}）にassetTagが設定されていません。`\n    );\n  }\n\n  if (!duration || duration <= 0) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `セグメント${index + 1}（assetTag: ${assetTag}）のdurationが不正です: ${duration}`\n    );\n  }\n\n  // Phase2から画像データを取得\n  const asset = assetMap[assetTag];\n  if (!asset) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `assetTag=\"${assetTag}\"に対応する画像データがPhase2に見つかりません。`\n    );\n  }\n\n  // 画像URL（originalUrlを優先、なければエラー）\n  const imageUrl = asset.originalUrl || asset.cloudinaryUrl;\n  if (!imageUrl) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `assetTag=\"${assetTag}\"の画像URLが見つかりません。originalUrlまたはcloudinaryUrlを設定してください。`\n    );\n  }\n\n  // Phase3から音声データを取得\n  const audioSegment = audioMap[assetTag];\n  if (!audioSegment) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `assetTag=\"${assetTag}\"に対応する音声データがPhase3に見つかりません。`\n    );\n  }\n\n  const audioUrl = audioSegment.audioUrl;\n  if (!audioUrl) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `assetTag=\"${assetTag}\"の音声URLが見つかりません。`\n    );\n  }\n\n  // 字幕テキスト（Phase3にあればそれを使用、なければPhase1のsubtitleを使用）\n  const subtitleText = audioSegment.subtitle || subtitle;\n  if (!subtitleText) {\n    throw new NodeOperationError(\n      this.getNode(),\n      `assetTag=\"${assetTag}\"の字幕テキストが見つかりません。`\n    );\n  }\n\n  // ------------------------------\n  // 要素1: 背景画像（Ken Burns効果付き）\n  // ------------------------------\n  elements.push({\n    type: \"image\",\n    source: imageUrl,\n    track: trackImage,\n    time: currentTime,\n    duration: duration,\n    animations: [\n      {\n        type: \"scale\",\n        start_scale: \"120%\",\n        end_scale: \"100%\",\n        duration: duration,\n        easing: \"cubic-in-out\",\n        scope: \"element\"\n      }\n    ]\n  });\n\n  // ------------------------------\n  // 要素2: 日本語字幕テキスト\n  // ------------------------------\n  elements.push({\n    type: \"text\",\n    text: subtitleText,\n    font_family: \"Noto Sans JP\",\n    font_size: \"60 px\",\n    color: \"#FFFFFF\",\n    y: \"50%\",\n    x: \"50%\",\n    x_anchor: \"50%\",\n    y_anchor: \"50%\",\n    track: trackText,\n    time: currentTime,\n    duration: duration\n  });\n\n  // ------------------------------\n  // 要素3: 音声（TTS生成音声）\n  // ------------------------------\n  elements.push({\n    type: \"audio\",\n    source: audioUrl,\n    track: trackAudio,\n    time: currentTime,\n    duration: duration\n  });\n\n  // 次のセグメントの開始時間を更新\n  currentTime += duration;\n});\n\n// ===========================\n// 4. RenderScript JSONの構築\n// ===========================\n\nconst totalDuration = currentTime; // 合計時間\n\nconst renderScript = {\n  template_id: \"40ff626c-9e09-4769-b8b9-66e859ecafa9\",\n  modifications: {\n    output_format: \"mp4\",\n    width: 1080,\n    height: 1920,\n    duration: totalDuration,\n    elements: elements\n  }\n};\n\n// ===========================\n// 5. 出力\n// ===========================\n\nreturn {\n  renderScript: renderScript,\n  metadata: {\n    totalSegments: segments.length,\n    totalDuration: totalDuration,\n    totalElements: elements.length,\n    generatedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "code-renderscript-001",
+      "name": "Generate RenderScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v2/renders",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer f7b348f69c3447ee983285fec11bd47e8b10a63e77eeb8f716fd097a8b06a8641c2bae8eb7c47d63a63b36cfeaaef1b7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.renderScript }}",
+        "options": {}
+      },
+      "id": "http-creatomate-001",
+      "name": "Call Creatomate API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * カウンター初期化\n * \n * Creatomate APIレスポンスからrender IDを抽出し、\n * ポーリングカウンターを初期化する\n */\n\nconst renderId = $json.id;\n\nif (!renderId) {\n  throw new NodeOperationError(\n    this.getNode(),\n    'Creatomate APIレスポンスにrender IDが見つかりません。'\n  );\n}\n\nreturn {\n  renderId: renderId,\n  pollCounter: 0,\n  maxPolls: 60,\n  status: 'rendering',\n  originalResponse: $json\n};"
+      },
+      "id": "code-init-counter-001",
+      "name": "Init Polling Counter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-polling-001",
+      "name": "Wait 5 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 300],
+      "webhookId": "poll-wait-webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.creatomate.com/v2/renders/{{ $json.renderId }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer f7b348f69c3447ee983285fec11bd47e8b10a63e77eeb8f716fd097a8b06a8641c2bae8eb7c47d63a63b36cfeaaef1b7"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-check-status-001",
+      "name": "Check Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * カウンターインクリメント＆ステータス保持\n * \n * ポーリング回数をカウントアップし、\n * Creatomateから取得したステータスを保持する\n */\n\nconst currentCounter = $('Init Polling Counter').item.json.pollCounter;\nconst maxPolls = $('Init Polling Counter').item.json.maxPolls;\nconst renderId = $('Init Polling Counter').item.json.renderId;\n\nconst renderStatus = $json.status;\nconst renderUrl = $json.url || null;\n\nreturn {\n  renderId: renderId,\n  pollCounter: currentCounter + 1,\n  maxPolls: maxPolls,\n  status: renderStatus,\n  url: renderUrl,\n  renderData: $json\n};"
+      },
+      "id": "code-increment-counter-001",
+      "name": "Increment Counter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-succeeded",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-check-status-001",
+      "name": "Check If Succeeded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-timeout",
+              "leftValue": "={{ $json.pollCounter }}",
+              "rightValue": "={{ $json.maxPolls }}",
+              "operator": {
+                "type": "number",
+                "operation": "smallerOrEquals"
+              }
+            },
+            {
+              "id": "condition-rendering",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "rendering",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-continue-polling-001",
+      "name": "Check If Continue Polling",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 480]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "/**\n * Step 4: 動画URL抽出 + Notion更新準備（単体テスト用）\n *\n * Creatomate APIのレスポンスから動画URLを抽出し、\n * Notion Hub更新用のデータを準備する\n */\n\n// 動画URLを抽出\nconst videoUrl = $json.url;\n\nif (!videoUrl) {\n  throw new NodeOperationError(\n    this.getNode(),\n    'レンダリング成功レスポンスに動画URLが見つかりません。'\n  );\n}\n\n// Notion更新用のデータを準備\n// 統合モックデータからTaskIDとTitleを取得\nconst taskId = $input.first().json.Phase1.TaskID || null;\nconst title = $input.first().json.Phase1.Script?.title || 'WF7 自動生成動画';\n\nreturn {\n  videoUrl: videoUrl,\n  taskId: taskId,\n  title: title,\n  status: 'Phase4完了',\n  completedAt: new Date().toISOString()\n};"
+      },
+      "id": "code-extract-video-url-001",
+      "name": "Extract Video URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": "={{ $json.taskId }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "VideoURL",
+              "textValue": "={{ $json.videoUrl }}"
+            },
+            {
+              "key": "Status",
+              "selectValue": "Phase4完了"
+            },
+            {
+              "key": "CompletedAt",
+              "dateValue": "={{ $json.completedAt }}"
+            }
+          ]
+        }
+      },
+      "id": "notion-update-hub-001",
+      "name": "Update Notion Hub",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [2220, 200]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Generate RenderScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate RenderScript": {
+      "main": [
+        [
+          {
+            "node": "Call Creatomate API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Creatomate API": {
+      "main": [
+        [
+          {
+            "node": "Init Polling Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Polling Counter": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Check Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Render Status": {
+      "main": [
+        [
+          {
+            "node": "Increment Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Counter": {
+      "main": [
+        [
+          {
+            "node": "Check If Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Succeeded": {
+      "main": [
+        [
+          {
+            "node": "Extract Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check If Continue Polling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Continue Polling": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Extract Video URL": {
+      "main": [
+        [
+          {
+            "node": "Update Notion Hub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-16T10:30:37.000Z",
+  "versionId": "00000000-0000-0000-0000-000000000002"
+}

@@ -1,0 +1,100 @@
+Starting Container
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+INFO:     Started server process [1]
+
+INFO:     Waiting for application startup.
+============================================================
+フォントインストール状況診断
+============================================================
+
+[1] fonts-noto関連パッケージ確認:
+  ii  fonts-noto-cjk                1:20240730+repack1-1                 all          "No Tofu" font families with large Unicode coverage (CJK regular and bold)
+  ii  fonts-noto-cjk-extra          1:20240730+repack1-1                 all          "No Tofu" font families with large Unicode coverage (CJK all weight)
+  ii  fonts-noto-color-emoji        2.048-1                              all          color emoji font from Google
+  ii  fonts-noto-core               20201225-2                           all          "No Tofu" font families with large Unicode coverage (core)
+
+  ii  fonts-noto-mono               20201225-2                           all          "No Tofu" monospaced font family with large Unicode coverage
+[2] フォントディレクトリ確認:
+  ✅ /usr/share/fonts/: 2個のファイル (0個のフォント)
+  ✅ /usr/share/fonts/truetype/: 2個のファイル (0個のフォント)
+  ✅ /usr/share/fonts/truetype/noto/: 272個のファイル (272個のフォント)
+     - NotoSansShavian-Regular.ttf
+     - NotoSansTirhuta-Regular.ttf
+     - NotoSansTifinaghSIL-Regular.ttf
+     - NotoSerifTibetan-Bold.ttf
+     - NotoSerifTelugu-Bold.ttf
+  ✅ /usr/share/fonts/opentype/noto/: 14個のファイル (14個のフォント)
+     - NotoSansCJK-DemiLight.ttc
+     - NotoSansCJK-Black.ttc
+     - NotoSerifCJK-Medium.ttc
+     - NotoSansCJK-Medium.ttc
+     - NotoSerifCJK-Regular.ttc
+
+[3] fontconfig (fc-list) 確認:
+  ✅ 合計 263 フォントファミリー検出
+  ✅ Notoフォント: 260個
+     - Noto Sans Gurmukhi
+     - Noto Sans Display
+     - Noto Sans Arabic
+     - Noto Serif Bengali
+     - Noto Sans Bengali
+     - Noto Sans CJK TC,Noto Sans CJK TC Medium
+     - Noto Sans Hebrew
+     - Noto Serif CJK KR,Noto Serif CJK KR Black
+     - Noto Sans Lepcha
+     - Noto Serif Devanagari
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763195540/n8n_meo_wf7_slide/opv3ke3cwlskexetd3dt.png
+Image downloaded: 11580 bytes
+Video generated: 35651 bytes, duration=13s
+INFO:     100.64.0.3:43046 - "POST /generate-single-video HTTP/1.1" 200 OK
+Executing ffmpeg: duration=13s, section=point1
+FFmpeg stdout: 
+Image downloaded: 11350 bytes
+Video generated: 28231 bytes, duration=10s
+Executing ffmpeg: duration=10s, section=intro
+INFO:     100.64.0.3:43046 - "POST /generate-single-video HTTP/1.1" 200 OK
+FFmpeg stdout: 
+============================================================
+
+🚀 Starting WF7 FFmpeg Video Renderer Server on port 8080...
+INFO:     100.64.0.2:42409 - "GET /health HTTP/1.1" 200 OK
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763195540/n8n_meo_wf7_slide/qolucznaxxkgnbmfost9.png
+Image downloaded: 11496 bytes
+Executing ffmpeg: duration=3s, section=hook
+FFmpeg stdout: 
+Video generated: 10326 bytes, duration=3s
+INFO:     100.64.0.3:43046 - "POST /generate-single-video HTTP/1.1" 200 OK
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763195540/n8n_meo_wf7_slide/osfvzjp0yab5ewccqawr.png
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763195540/n8n_meo_wf7_slide/gfutaon5jm54xhy0dktu.png
+INFO:     100.64.0.3:43046 - "POST /generate-single-video HTTP/1.1" 500 Internal Server Error
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763196130/n8n_meo_wf7_slide/mmt7vm3tetkblkropl2c.png
+Image downloaded: 11496 bytes
+Executing ffmpeg: duration=3s, section=hook
+FFmpeg stdout: 
+Video generated: 10326 bytes, duration=3s
+INFO:     100.64.0.3:47410 - "POST /generate-single-video HTTP/1.1" 200 OK
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763196130/n8n_meo_wf7_slide/coyrpuswjckzbf09nlwn.png
+Image downloaded: 11350 bytes
+Executing ffmpeg: duration=10s, section=intro
+FFmpeg stdout: 
+Video generated: 28231 bytes, duration=10s
+INFO:     100.64.0.3:47410 - "POST /generate-single-video HTTP/1.1" 200 OK
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763196130/n8n_meo_wf7_slide/jpsclopwqgabgt20oie8.png
+Image downloaded: 11580 bytes
+Executing ffmpeg: duration=13s, section=point1
+FFmpeg stdout: 
+Video generated: 35651 bytes, duration=13s
+INFO:     100.64.0.4:61292 - "POST /generate-single-video HTTP/1.1" 200 OK
+Video generated: 53697 bytes, duration=20s
+Executing ffmpeg: duration=7s, section=cta
+INFO:     100.64.0.6:20208 - "POST /generate-single-video HTTP/1.1" 200 OK
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763196130/n8n_meo_wf7_slide/xpahkx6tqsvcxgjtjfwn.png
+Image downloaded: 11871 bytes
+Video generated: 38099 bytes, duration=14s
+INFO:     100.64.0.6:20208 - "POST /generate-single-video HTTP/1.1" 200 OK
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763196130/n8n_meo_wf7_slide/i8grayjadfbsk5qaatng.png
+Downloading image: https://res.cloudinary.com/drzmodro8/image/upload/v1763196130/n8n_meo_wf7_slide/ttsyiqftmzedg8n74vfi.png
+Image downloaded: 11717 bytes
+Executing ffmpeg: duration=13s, section=point2
+FFmpeg stdout: 

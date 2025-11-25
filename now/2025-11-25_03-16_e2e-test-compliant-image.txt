@@ -1,0 +1,6 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100    47    0     0  100    47      0     35  0:00:01  0:00:01 --:--:--    35100    47    0     0  100    47      0     20  0:00:02  0:00:02 --:--:--    20100    47    0     0  100    47      0     14  0:00:03  0:00:03 --:--:--    14100    47    0     0  100    47      0     10  0:00:04  0:00:04 --:--:--    10100    47    0     0  100    47      0      8  0:00:05  0:00:05 --:--:--     8100    47    0     0  100    47      0      7  0:00:06  0:00:06 --:--:--     0100   196  100   149  100    47     21      6  0:00:07  0:00:07 --:--:--    31100   196  100   149  100    47     21      6  0:00:07  0:00:07 --:--:--    40
+{"success":true,"message":"Video generation started","taskId":"5b99b1760c2c7c25720f9d3644f994f1","status":"processing","estimatedTime":"4-5 minutes"}
+HTTP Status: 200
+Total Time: 7.020130s

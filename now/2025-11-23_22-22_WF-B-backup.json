@@ -1,0 +1,234 @@
+{
+  "name": "WF-B: Analyze & Suggest Next Actions",
+  "id": "2mBYCQMjW2Vw1Xaa",
+  "createdAt": "2025-11-23T13:19:02.528Z",
+  "updatedAt": "2025-11-23T13:19:02.528Z",
+  "active": false,
+  "nodes": [
+    {
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "parameters": {}
+    },
+    {
+      "id": "google-sheets-get",
+      "name": "Google Sheets - Get editorial",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 300],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "mode": "id",
+          "value": "1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII"
+        },
+        "sheetName": {
+          "mode": "list",
+          "value": "editorial"
+        },
+        "options": {
+          "includeHeaderRow": true
+        }
+      }
+    },
+    {
+      "id": "function-filter",
+      "name": "Function - Filter published",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\n\nreturn items\n  .filter(item => item.json.status === 'published')\n  .map((item, index) => ({\n    json: {\n      ...item.json,\n      row_id: index + 2,\n      sheet_url: `https://docs.google.com/spreadsheets/d/1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII/edit#gid=0&range=A${index + 2}`\n    }\n  }));"
+      }
+    },
+    {
+      "id": "split-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      }
+    },
+    {
+      "id": "project-config",
+      "name": "Project Config B",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "project_name",
+              "value": "Contents Engine講座",
+              "type": "string"
+            },
+            {
+              "name": "default_segment",
+              "value": "Cold",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "merge",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1340, 300],
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      }
+    },
+    {
+      "id": "function-preprocess",
+      "name": "Function - Preprocess",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $input.item.json;\n\nreturn {\n  json: {\n    row_id: j.row_id,\n    sheet_url: j.sheet_url,\n    row: {\n      status: j.status,\n      trending_keyword: j.trending_keyword,\n      abstract: j.abstract || '',\n      segment: j.segment || j.default_segment || 'Cold',\n      generated_title: j.generated_title,\n      generated_body: j.generated_body,\n      note_url: j.note_url,\n      note_title: j.note_title,\n      note_pv: j.note_pv ?? 0,\n      note_likes: j.note_likes ?? 0,\n      note_conversion: j.note_conversion ?? 0.0\n    }\n  }\n};"
+      }
+    },
+    {
+      "id": "ai-agent-primary",
+      "name": "AI Agent (gpt-4o-mini)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1780, 300],
+      "parameters": {
+        "agent": "openAiFunctionsAgent",
+        "promptType": "define",
+        "text": "You are a data-driven marketing analyst.\n\nContext:\n- Published row: {{$json.row}}\n\nTask:\n1) Decide next_decision (improve|pause|scale) based on PV, conversion, segment fit.\n2) Suggest one concrete next_action (<=200 chars) and one next_keyword_idea (<=100 chars).\n3) Choose next_segment (Cold/Middle/Hot/Current).\n4) Return 2-4 bullet insights (each <=200 chars) and concise reasoning (<=500 chars).\n\nOutput: JSON matching the connected output parser schema.",
+        "options": {
+          "systemMessage": "You are a marketing analyst. Prioritize actionable next steps with minimal hallucination.\n\nCRITICAL: Your response MUST be valid JSON matching this exact schema:\n{\n  \"next_decision\": \"improve|pause|scale\",\n  \"next_action\": \"string (max 200 chars)\",\n  \"next_segment\": \"Cold|Middle|Hot|Current\",\n  \"next_keyword_idea\": \"string (max 100 chars)\",\n  \"insights\": [\"string\", \"string\", ...],\n  \"reasoning\": \"string (max 500 chars)\"\n}\n\nDo NOT include any text outside this JSON structure.",
+          "maxIterations": 8,
+          "returnIntermediateSteps": false
+        }
+      }
+    },
+    {
+      "id": "output-parser",
+      "name": "Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [2000, 300],
+      "parameters": {
+        "jsonSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"next_decision\": {\n      \"type\": \"string\",\n      \"enum\": [\"improve\", \"pause\", \"scale\"],\n      \"description\": \"次の打ち手の方向性\"\n    },\n    \"next_action\": {\n      \"type\": \"string\",\n      \"maxLength\": 200,\n      \"minLength\": 1,\n      \"description\": \"具体的なアクション（200文字以内）\"\n    },\n    \"next_segment\": {\n      \"type\": \"string\",\n      \"enum\": [\"Cold\", \"Middle\", \"Hot\", \"Current\"],\n      \"description\": \"推奨セグメント\"\n    },\n    \"next_keyword_idea\": {\n      \"type\": \"string\",\n      \"maxLength\": 100,\n      \"minLength\": 1,\n      \"description\": \"次のキーワード案（100文字以内）\"\n    },\n    \"insights\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\",\n        \"maxLength\": 200\n      },\n      \"minItems\": 2,\n      \"maxItems\": 4,\n      \"description\": \"分析インサイト（2-4個）\"\n    },\n    \"reasoning\": {\n      \"type\": \"string\",\n      \"maxLength\": 500,\n      \"minLength\": 1,\n      \"description\": \"判断理由（500文字以内）\"\n    }\n  },\n  \"required\": [\n    \"next_decision\",\n    \"next_action\",\n    \"next_segment\",\n    \"next_keyword_idea\",\n    \"insights\",\n    \"reasoning\"\n  ],\n  \"additionalProperties\": false\n}"
+      }
+    },
+    {
+      "id": "function-validate",
+      "name": "Function - Validate Schema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const json = $input.item.json;\nconst validationErrors = [];\n\nconst requiredKeys = ['next_decision', 'next_action', 'next_segment', 'next_keyword_idea', 'insights', 'reasoning'];\nfor (const key of requiredKeys) {\n  if (!(key in json)) {\n    validationErrors.push(`Missing required key: ${key}`);\n  }\n}\n\nif (!['improve', 'pause', 'scale'].includes(json.next_decision)) {\n  validationErrors.push('Invalid next_decision');\n}\n\nif (!['Cold', 'Middle', 'Hot', 'Current'].includes(json.next_segment)) {\n  validationErrors.push('Invalid next_segment');\n}\n\nif (json.next_action?.length > 200) {\n  validationErrors.push('next_action exceeds max length');\n}\n\nif (json.next_keyword_idea?.length > 100) {\n  validationErrors.push('next_keyword_idea exceeds max length');\n}\n\nif (!Array.isArray(json.insights) || json.insights.length < 2 || json.insights.length > 4) {\n  validationErrors.push('insights must have 2-4 items');\n}\n\nif (json.reasoning?.length > 500) {\n  validationErrors.push('reasoning exceeds max length');\n}\n\nif (validationErrors.length > 0) {\n  throw new Error(`Schema validation failed:\\n${validationErrors.join('\\n')}`);\n}\n\nreturn {\n  json: {\n    ...json,\n    validation_passed: true,\n    validated_at: new Date().toISOString()\n  }\n};"
+      }
+    },
+    {
+      "id": "google-sheets-update",
+      "name": "Google Sheets - Update",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2440, 300],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "id",
+          "value": "1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII"
+        },
+        "sheetName": {
+          "mode": "list",
+          "value": "editorial"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "next_decision": "={{ $json.next_decision }}",
+            "next_action": "={{ $json.next_action }}",
+            "next_segment": "={{ $json.next_segment }}",
+            "next_keyword_idea": "={{ $json.next_keyword_idea }}",
+            "analyzed_at": "={{ $now }}",
+            "insights_json": "={{ JSON.stringify($json.insights) }}",
+            "reasoning": "={{ $json.reasoning }}"
+          }
+        }
+      }
+    },
+    {
+      "id": "loop-back",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 500],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{"node": "Google Sheets - Get editorial", "type": "main", "index": 0}]]
+    },
+    "Google Sheets - Get editorial": {
+      "main": [[{"node": "Function - Filter published", "type": "main", "index": 0}]]
+    },
+    "Function - Filter published": {
+      "main": [[{"node": "Split In Batches", "type": "main", "index": 0}]]
+    },
+    "Split In Batches": {
+      "main": [
+        [{"node": "Project Config B", "type": "main", "index": 0}],
+        [{"node": "Loop Back", "type": "main", "index": 0}]
+      ]
+    },
+    "Project Config B": {
+      "main": [[{"node": "Merge", "type": "main", "index": 0}]]
+    },
+    "Merge": {
+      "main": [[{"node": "Function - Preprocess", "type": "main", "index": 0}]]
+    },
+    "Function - Preprocess": {
+      "main": [[{"node": "AI Agent (gpt-4o-mini)", "type": "main", "index": 0}]]
+    },
+    "AI Agent (gpt-4o-mini)": {
+      "main": [[{"node": "Output Parser", "type": "main", "index": 0}]]
+    },
+    "Output Parser": {
+      "main": [[{"node": "Function - Validate Schema", "type": "main", "index": 0}]]
+    },
+    "Function - Validate Schema": {
+      "main": [[{"node": "Google Sheets - Update", "type": "main", "index": 0}]]
+    },
+    "Google Sheets - Update": {
+      "main": [[{"node": "Split In Batches", "type": "main", "index": 0}]]
+    },
+    "Loop Back": {
+      "main": []
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

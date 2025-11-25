@@ -1,0 +1,58 @@
+{
+  "name": "Add Idea to Google Sheets",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "add-idea"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "append",
+        "sheetId": "1Gdqn7krlhpgKi__3h6xKjOm0XZ12usftoorXJTD7LII",
+        "range": "Ideas!A:E",
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        }
+      },
+      "id": "google-sheets-append",
+      "name": "Google Sheets - Append Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [450, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-oauth",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\n\nreturn [\n  {\n    json: {\n      values: [[\n        input.trending_keyword || 'TEST: n8nワークフロー自動化入門',\n        input.segment || 'Cold',\n        input.status || 'idea',\n        input.abstract || 'n8nを使った業務自動化の基礎を学ぶ初心者向けガイド',\n        new Date().toISOString()\n      ]]\n    }\n  }\n];"
+      },
+      "id": "prepare-data",
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [350, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Prepare Data", "type": "main", "index": 0 }]]
+    },
+    "Prepare Data": {
+      "main": [[{ "node": "Google Sheets - Append Row", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "created_at": "2025-11-22 18:54:46 JST"
+}

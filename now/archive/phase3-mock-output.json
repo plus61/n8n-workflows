@@ -1,0 +1,41 @@
+{
+  "Audio": {
+    "segments": [
+      {
+        "assetTag": "test-hook-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-hook-001.mp3",
+        "subtitle": "これが未来の動画制作"
+      },
+      {
+        "assetTag": "test-intro-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-intro-001.mp3",
+        "subtitle": "効率化がもたらす変革"
+      },
+      {
+        "assetTag": "test-point1-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-point1-001.mp3",
+        "subtitle": "作業時間を70%削減した実例"
+      },
+      {
+        "assetTag": "test-point2-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-point2-001.mp3",
+        "subtitle": "品質を保ちながら高速化"
+      },
+      {
+        "assetTag": "test-point3-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-point3-001.mp3",
+        "subtitle": "AIがもたらす新しい価値"
+      },
+      {
+        "assetTag": "test-summary-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-summary-001.mp3",
+        "subtitle": "自動化で変わる未来の働き方"
+      },
+      {
+        "assetTag": "test-cta-001",
+        "audioUrl": "https://storage.googleapis.com/elevenlabs-test/audio/test-cta-001.mp3",
+        "subtitle": "今すぐ試してみよう！"
+      }
+    ]
+  }
+}

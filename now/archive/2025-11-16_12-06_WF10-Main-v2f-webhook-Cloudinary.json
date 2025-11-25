@@ -1,0 +1,264 @@
+{
+  "name": "WF10-Main: Runway Gen-3 ビデオ生成（Cloudinary統合 - Webhook版）",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf10-main-cloudinary-test",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "wf10-main-cloudinary-test"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "google-drive-file-id",
+              "name": "google_drive_file_id",
+              "value": "13uo0kLmfHFx0HE6pDqlN16qGysSrSKbg",
+              "type": "string"
+            },
+            {
+              "id": "test-script",
+              "name": "台本本文",
+              "value": "A serene landscape with mountains and clear blue sky, camera slowly panning from left to right",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-test-data",
+      "name": "Set - Test Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ \"https://drive.google.com/uc?export=download&id=\" + $json.google_drive_file_id }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-download-image",
+      "name": "HTTP Request - Download Image from Google Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const apiSecret = 'IKxxQL7zniUB5s9TeijsChM8hAs';\nconst timestamp = Math.floor(Date.now() / 1000);\nconst folder = 'n8n_wf10_runway';\n\n// upload用の署名生成（パラメータ: folder, timestamp）\nconst stringToSign = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;\n\n// SHA-1ハッシュ生成（WF7のロジックを流用）\nfunction sha1(str) {\n  function rotateLeft(n, s) {\n    return (n << s) | (n >>> (32 - s));\n  }\n  \n  function toHexStr(n) {\n    let s = '', v;\n    for (let i = 7; i >= 0; i--) {\n      v = (n >>> (i * 4)) & 0xf;\n      s += v.toString(16);\n    }\n    return s;\n  }\n  \n  function utf8Encode(str) {\n    return unescape(encodeURIComponent(str));\n  }\n  \n  let message = utf8Encode(str);\n  let msgLen = message.length;\n  let words = [];\n  \n  for (let i = 0; i < msgLen; i++) {\n    words[i >>> 2] |= (message.charCodeAt(i) & 0xff) << (24 - 8 * (i % 4));\n  }\n  \n  words[msgLen >>> 2] |= 0x80 << (24 - 8 * (msgLen % 4));\n  words[(((msgLen + 8) >>> 6) << 4) + 15] = msgLen * 8;\n  \n  let h0 = 0x67452301;\n  let h1 = 0xefcdab89;\n  let h2 = 0x98badcfe;\n  let h3 = 0x10325476;\n  let h4 = 0xc3d2e1f0;\n  \n  for (let i = 0; i < words.length; i += 16) {\n    let w = words.slice(i, i + 16);\n    for (let j = 16; j < 80; j++) {\n      w[j] = rotateLeft(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);\n    }\n    \n    let a = h0, b = h1, c = h2, d = h3, e = h4;\n    \n    for (let j = 0; j < 80; j++) {\n      let f, k;\n      if (j < 20) {\n        f = (b & c) | (~b & d);\n        k = 0x5a827999;\n      } else if (j < 40) {\n        f = b ^ c ^ d;\n        k = 0x6ed9eba1;\n      } else if (j < 60) {\n        f = (b & c) | (b & d) | (c & d);\n        k = 0x8f1bbcdc;\n      } else {\n        f = b ^ c ^ d;\n        k = 0xca62c1d6;\n      }\n      \n      let temp = (rotateLeft(a, 5) + f + e + k + (w[j] | 0)) | 0;\n      e = d;\n      d = c;\n      c = rotateLeft(b, 30);\n      b = a;\n      a = temp;\n    }\n    \n    h0 = (h0 + a) | 0;\n    h1 = (h1 + b) | 0;\n    h2 = (h2 + c) | 0;\n    h3 = (h3 + d) | 0;\n    h4 = (h4 + e) | 0;\n  }\n  \n  return toHexStr(h0) + toHexStr(h1) + toHexStr(h2) + toHexStr(h3) + toHexStr(h4);\n}\n\nconst signature = sha1(stringToSign);\n\n// 台本も受け渡し\nconst prompt = $('Set - Test Data').first().json.台本本文;\n\nreturn {\n  cloudinary_timestamp: timestamp,\n  cloudinary_signature: signature,\n  cloudinary_folder: folder,\n  prompt: prompt\n};"
+      },
+      "id": "code-generate-signature",
+      "name": "Code - Generate Cloudinary Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8nのヘルパー関数を使用してバイナリデータを取得\ntry {\n  const binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\n  \n  // Base64エンコード\n  const base64Data = binaryData.toString('base64');\n  \n  // バイナリデータのMIMEタイプを取得\n  const mimeType = $binary.data.mimeType || 'image/png';\n  \n  // Data URI形式に変換\n  const dataUri = `data:${mimeType};base64,${base64Data}`;\n  \n  // Cloudinary認証情報\n  const cloudName = 'drzmodro8';\n  const apiKey = '188947963992381';\n  const timestamp = $json.cloudinary_timestamp;\n  const signature = $json.cloudinary_signature;\n  const folder = $json.cloudinary_folder;\n  \n  // Cloudinary Upload APIを呼び出し\n  const response = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,\n    headers: {\n      'Content-Type': 'application/json'\n    },\n    body: {\n      file: dataUri,\n      folder: folder,\n      timestamp: timestamp,\n      api_key: apiKey,\n      signature: signature\n    },\n    json: true\n  });\n  \n  // promptを受け渡し\n  return {\n    json: {\n      ...response,\n      prompt: $json.prompt\n    }\n  };\n  \n} catch (error) {\n  // 詳細なエラー情報を返す\n  return {\n    json: {\n      error: error.message,\n      error_details: error.response?.data || error.response || 'No response data',\n      status_code: error.response?.status || 'unknown',\n      cloudinary_timestamp: $json.cloudinary_timestamp,\n      cloudinary_signature: $json.cloudinary_signature\n    }\n  };\n}"
+      },
+      "id": "code-upload-cloudinary",
+      "name": "Code - Upload to Cloudinary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://queue.fal.run/fal-ai/runway-gen3/turbo/image-to-video?fal_webhook=https://n8n-python-production-344b.up.railway.app/webhook/wf10-runway-webhook",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"image_url\": $json.secure_url,\n  \"prompt\": $json.prompt,\n  \"duration\": 10,\n  \"ratio\": \"16:9\"\n} }}"
+      },
+      "id": "http-request-runway",
+      "name": "HTTP Request - Runway Gen-3 API (Cloudinary URL)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fal-api-key",
+          "name": "fal.ai API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "queue-position",
+              "name": "queue_position",
+              "value": "={{ $json.queue_position }}",
+              "type": "number"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $json.response_url }}",
+              "type": "string"
+            },
+            {
+              "id": "cloudinary-url",
+              "name": "cloudinary_url",
+              "value": "={{ $('Code - Upload to Cloudinary').first().json.secure_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-response-parse",
+      "name": "Set - Response Parse",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Test Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Test Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Download Image from Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Download Image from Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Cloudinary Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Cloudinary Signature": {
+      "main": [
+        [
+          {
+            "node": "Code - Upload to Cloudinary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Upload to Cloudinary": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Runway Gen-3 API (Cloudinary URL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Runway Gen-3 API (Cloudinary URL)": {
+      "main": [
+        [
+          {
+            "node": "Set - Response Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-16T03:06:58.000Z",
+  "versionId": "v2f-webhook-Cloudinary"
+}
