@@ -1,8 +1,8 @@
 # n8nワークフロー構築ナレッジベース
 
 **作成日**: 2025-10-29
-**最終更新**: 2025-11-04
-**出典**: WF6 (note記事自動生成), WF7 (SNS動画生成パイプライン) 構築・テスト・トラブルシューティング実行から得られた知見
+**最終更新**: 2025-11-24
+**出典**: WF6 (note記事自動生成), WF7 (SNS動画生成パイプライン), WF-B (AI Agent分析パイプライン) 構築・テスト・トラブルシューティング実行から得られた知見
 
 ## 目次
 
@@ -15,6 +15,9 @@
 7. [Webhook設計パターンとRailway制限](#7-webhook設計パターンとrailway制限)
 8. [Execute Command ノードのベストプラクティス](#8-execute-command-ノードのベストプラクティス)
 9. [チェックリスト](#9-チェックリスト)
+10. [AI Agent + JSON出力パイプライン](#10-ai-agent--json出力パイプライン)
+11. [Google Sheets ノード制約事項](#11-google-sheets-ノード制約事項)
+12. [n8n MCP API 使用時の注意事項](#12-n8n-mcp-api-使用時の注意事項)
 
 ---
 
@@ -2339,12 +2342,836 @@ Iteration 4 (Execution 823):
 
 ---
 
+---
+
+## クリティカル: Error Handler実装パターン（n8nエラーデータ構造の制限対応）
+
+### 問題: n8nのエラー出力にノード名が含まれない
+
+**発見日時**: 2025-11-22 (WF-A: Generate Note Drafts from Editorial Ideas)
+
+**背景**:
+- n8nのエラーハンドリングで、エラー発生元ノードを特定しようとした
+- `errorData.node`プロパティでノード名を取得しようとしたが、常に`undefined`
+- 実際のn8nエラーデータ構造には**`node`フィールドが存在しない**
+
+**n8nエラーデータの実際の構造**:
+```javascript
+{
+  // 元の入力データ（すべてのフィールドそのまま）
+  "trending_keyword": "...",
+  "abstract": "...",
+  // ... その他の入力フィールド
+
+  // エラー情報（追加される）
+  "error": {
+    "message": "Credentials not found",
+    "stack": "...",
+    // その他のエラー詳細
+  }
+}
+```
+
+**重要**: `node`フィールドや`failedNodeName`などのメタデータは含まれない。
+
+### 解決策: パターンマッチング戦略
+
+エラーメッセージとデータ構造から発生元ノードを推測する実装パターン:
+
+```javascript
+// エラーハンドリング関数（改善版 - エラー発生元ノードを推測）
+const errorData = $input.first().json;
+const errorMessage = errorData.error?.message || JSON.stringify(errorData.error) || 'Unknown Error';
+const timestamp = new Date().toISOString();
+
+// エラー発生元ノードを推測（エラーメッセージまたはデータ構造から）
+let failedNode = 'Unknown Node';
+
+// 1. OpenAIエラーの検出（認証エラー、APIキーエラーなど）
+if (errorMessage.includes('Credentials not found') ||
+    errorMessage.includes('Invalid API key') ||
+    errorMessage.includes('OpenAI')) {
+  failedNode = 'OpenAI - Generate Note Draft1';
+}
+// 2. Parseエラーの検出（JSONパースエラーの特徴的なメッセージ）
+else if (errorMessage.includes('parse') ||
+         errorMessage.includes('JSON') ||
+         errorMessage.includes('Unexpected token')) {
+  failedNode = 'Parse OpenAI Note JSON1';
+}
+// 3. Google Sheetsエラーの検出
+else if (errorMessage.includes('Sheets') ||
+         errorMessage.includes('Google Sheets') ||
+         errorMessage.includes('spreadsheet')) {
+  failedNode = 'Google Sheets - Update Draft Row1';
+}
+// 4. データ構造から推測（特定のフィールドの有無で判断）
+else if (errorData.draft_text || errorData.formatted_content) {
+  failedNode = 'Parse OpenAI Note JSON1 or Google Sheets - Update Draft Row1';
+}
+
+return {
+  json: {
+    channel: '#content-ops',
+    text: `⚠️ *WF-A エラー発生*\n\n*Failed Node:* ${failedNode}\n*Error:* ${errorMessage}\n*Time:* ${timestamp}\n*Workflow:* Generate Note Drafts from Editorial Ideas`
+  }
+};
+```
+
+### パターンマッチング戦略の設計指針
+
+1. **エラーメッセージキーワード検出**: 各ノードタイプ固有のエラーメッセージを検出
+   - API認証エラー: "Credentials not found", "Invalid API key"
+   - サービス名: "OpenAI", "Sheets", "Google Sheets"
+   - パースエラー: "parse", "JSON", "Unexpected token"
+
+2. **データ構造分析**: エラーデータ内のフィールド存在で処理段階を推測
+   - 生成済みデータ（`draft_text`, `formatted_content`など）の有無
+   - API特有のレスポンスフィールド
+
+3. **検出ロジックの優先順位**:
+   - 最も特徴的なエラーから順に判定（OpenAI → Parse → Sheets）
+   - データ構造推論は最後の手段（曖昧性が高い）
+
+4. **フォールバック戦略**:
+   - 特定できない場合は `'Unknown Node'` または範囲を示す（`'Node X or Y'`）
+   - エラーメッセージ全文をログに含め、後で手動分析可能にする
+
+### 適用時の注意点
+
+- **ワークフロー固有のカスタマイズ必須**: 各ワークフローのノード構成とエラーパターンに応じて検出ロジックを調整
+- **テストケース作成**: 各ノードで意図的にエラーを発生させ、検出ロジックを検証
+- **継続的な改善**: 新しいエラーパターンが発見されたら検出ロジックを追加
+
+### 実装効果（WF-A）
+
+**Before**（Version 45以前）:
+```
+*Failed Node:* Unknown Node
+*Error:* "Credentials not found"
+```
+
+**After**（Version 47以降）:
+```
+*Failed Node:* OpenAI - Generate Note Draft1
+*Error:* "Credentials not found"
+```
+
+**改善結果**:
+- エラー発生箇所が明確化され、デバッグ時間を大幅短縮
+- Slack通知から即座に問題箇所を特定可能
+- 複数ノードでエラーが発生する場合の切り分けが容易
+
+---
+
+## 10. AI Agent + JSON出力パイプライン
+
+### 概要
+
+AI Agent + Code ノードを使用したJSON出力パイプラインにおける3つのクリティカルな問題と解決策。これらは**Phase 4型インシデント**（データフロー・構文エラーによる実行時失敗）の典型例。
+
+**検証環境**: Railway n8n (https://n8n-python-production-344b.up.railway.app)
+**対象ワークフロー**: WF-B: Analyze & Suggest Next Actions (ID: 2mBYCQMjW2Vw1Xaa)
+
+---
+
+### 🚨 Critical Fix 1: Code ノードでのテンプレートリテラル構文エラー
+
+#### 問題
+
+**症状**:
+```
+SyntaxError: Invalid or unexpected token
+evalmachine.<anonymous>:30
+  throw new Error(`Missing required fields: ${missingFields.join(',
+                                                                 ^^^
+```
+
+**根本原因**:
+- Code ノード（JavaScript）内でバッククォート文字列が複数行にまたがると構文エラー
+- n8nのCode実行環境がテンプレートリテラルの改行を正しく処理できない
+
+#### 解決策
+
+❌ **NG例** - テンプレートリテラル使用:
+```javascript
+throw new Error(`Missing required fields: ${missingFields.join(',
+')}`);
+```
+
+✅ **OK例** - 文字列連結使用:
+```javascript
+throw new Error('Missing required fields: ' + missingFields.join(', '));
+```
+
+#### ベストプラクティス
+
+```javascript
+// Code ノード内のエラーメッセージは文字列連結で構築
+const validationErrors = [];
+
+if (missingFields.length > 0) {
+  throw new Error('Missing required fields: ' + missingFields.join(', '));
+}
+
+if (!['improve', 'pause', 'scale'].includes(data.next_decision)) {
+  validationErrors.push('Invalid next_decision: ' + data.next_decision);
+}
+
+if (validationErrors.length > 0) {
+  throw new Error('Schema validation failed: ' + validationErrors.join(', '));
+}
+```
+
+**キーポイント**:
+- 動的な値を含むエラーメッセージは `+` 演算子で連結
+- `Array.join()` で配列を文字列化
+- バッククォートは使用しない
+
+---
+
+### 🚨 Critical Fix 2: AI Agent JSON出力のパース処理
+
+#### 問題
+
+**AI Agent出力形式**:
+```json
+{
+  "output": "{\"next_decision\":\"improve\",\"next_action\":\"...\",\"insights\":[...]}"
+}
+```
+
+- AI Agentは `{output: "JSON文字列"}` 形式で返す
+- 直接 `$json` では構造化データとしてアクセス不可
+
+#### 解決策
+
+**Function - Validate Schema の実装**:
+
+```javascript
+// AI AgentのJSON文字列出力をパース
+const aiOutput = $input.item.json.output;
+
+// Markdownコードブロック除去
+let parsedData;
+try {
+  const cleanedOutput = aiOutput
+    .replace(/```json\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim();
+  parsedData = JSON.parse(cleanedOutput);
+} catch (error) {
+  throw new Error('JSON parse failed: ' + error.message);
+}
+
+// スキーマバリデーション
+const requiredFields = ['next_decision', 'next_action', 'next_segment', 'next_keyword_idea', 'insights', 'reasoning'];
+const missingFields = requiredFields.filter(field => !(field in parsedData));
+
+if (missingFields.length > 0) {
+  throw new Error('Missing required fields: ' + missingFields.join(', '));
+}
+
+// バリデーション詳細チェック
+const validationErrors = [];
+
+if (!['improve', 'pause', 'scale'].includes(parsedData.next_decision)) {
+  validationErrors.push('Invalid next_decision: ' + parsedData.next_decision);
+}
+
+if (!['Cold', 'Middle', 'Hot', 'Current'].includes(parsedData.next_segment)) {
+  validationErrors.push('Invalid next_segment: ' + parsedData.next_segment);
+}
+
+if (parsedData.next_action && parsedData.next_action.length > 200) {
+  validationErrors.push('next_action exceeds max length (200 chars)');
+}
+
+if (parsedData.next_keyword_idea && parsedData.next_keyword_idea.length > 100) {
+  validationErrors.push('next_keyword_idea exceeds max length (100 chars)');
+}
+
+if (!Array.isArray(parsedData.insights) || parsedData.insights.length < 2 || parsedData.insights.length > 4) {
+  validationErrors.push('insights must have 2-4 items');
+}
+
+if (parsedData.reasoning && parsedData.reasoning.length > 500) {
+  validationErrors.push('reasoning exceeds max length (500 chars)');
+}
+
+if (validationErrors.length > 0) {
+  throw new Error('Schema validation failed: ' + validationErrors.join(', '));
+}
+
+// フラットな構造でGoogle Sheetsに渡す
+return {
+  json: {
+    ...parsedData,
+    validation_passed: true,
+    validated_at: new Date().toISOString()
+  }
+};
+```
+
+#### データフロー
+
+```
+AI Agent → {output: "JSON string"}
+    ↓
+Function - Validate Schema:
+  1. $input.item.json.output 抽出
+  2. Markdownコードブロック除去
+  3. JSON.parse()
+  4. スキーマバリデーション（enum, length, array size）
+  5. フラット化して返却
+    ↓
+Google Sheets Update → ={{ $json.next_decision }} でアクセス可能
+```
+
+---
+
+### 🚨 Critical Fix 3: AI Agent プロンプトの式評価エラー
+
+#### 問題
+
+**症状**:
+AI Agentが記事データを受け取れず、以下のような応答を返す:
+```json
+{
+  "output": "Please provide the article data in JSON format so I can perform the analysis..."
+}
+```
+
+**根本原因**:
+
+❌ **NG例** - 文字列連結が式評価されない:
+```javascript
+="You are a data-driven marketing analyst.\n\nPUBLISHED ARTICLE DATA:\n" + JSON.stringify($json.row, null, 2) + "\n\nANALYSIS TASK:..."
+```
+
+- `=` で始まっても `{{ }}` がないため、n8nは式として評価しない
+- `JSON.stringify()` が実行されず、リテラル文字列として渡される
+
+#### 解決策
+
+✅ **OK例1** - テンプレートリテラル（推奨）:
+```javascript
+={{ `You are a data-driven marketing analyst.
+
+PUBLISHED ARTICLE DATA:
+${JSON.stringify($json.row, null, 2)}
+
+ANALYSIS TASK:
+Based on the above article data, provide your analysis in STRICT JSON format.
+
+CRITICAL REQUIREMENTS:
+1. Your response must be ONLY a valid JSON object
+2. NO markdown code blocks (no \`\`\`json\`\`\`)
+3. NO additional text before or after the JSON
+4. Use the exact field names specified below
+
+DECISION CRITERIA:
+- "improve": PV < 1000 OR conversion < 1%
+- "pause": PV < 100 AND conversion < 0.5% AND segment is Cold
+- "scale": PV > 3000 AND conversion > 2%
+
+REQUIRED JSON STRUCTURE:
+{
+  "next_decision": "improve" | "pause" | "scale",
+  "next_action": "One concrete action (max 200 chars)",
+  "next_segment": "Cold" | "Middle" | "Hot" | "Current",
+  "next_keyword_idea": "One keyword suggestion (max 100 chars)",
+  "insights": [
+    "Insight 1 (max 200 chars)",
+    "Insight 2 (max 200 chars)",
+    "Insight 3 (max 200 chars, optional)",
+    "Insight 4 (max 200 chars, optional)"
+  ],
+  "reasoning": "Concise explanation of your decision (max 500 chars)"
+}
+
+Remember: Return ONLY the JSON object, nothing else.` }}
+```
+
+**構文ポイント**:
+- `={{ }}` で全体をラップ → n8nが式として評価
+- バッククォート `` ` `` でテンプレートリテラル開始
+- `${変数}` で変数展開
+- 内部のバッククォートはエスケープ: `\`\`\`json\`\`\``
+
+✅ **OK例2** - 配列join（より安全）:
+```javascript
+={{ [
+  "You are a data-driven marketing analyst.",
+  "",
+  "PUBLISHED ARTICLE DATA:",
+  JSON.stringify($json.row, null, 2),
+  "",
+  "ANALYSIS TASK:",
+  "Based on the above article data, provide your analysis in STRICT JSON format.",
+  // ... 各行を配列要素として列挙
+].join("\n") }}
+```
+
+#### ベストプラクティス
+
+**AI Agent プロンプトの黄金律**:
+
+1. **式評価の明示**: `={{ }}` で必ずラップ
+2. **変数展開**: テンプレートリテラルまたはarray join使用
+3. **プロンプト構造**:
+   ```javascript
+   ={{ `[役割定義]
+
+   INPUT DATA:
+   ${JSON.stringify($json.data, null, 2)}
+
+   TASK:
+   [具体的なタスク指示]
+
+   OUTPUT FORMAT:
+   [JSON構造の明示]
+
+   CONSTRAINTS:
+   [制約条件]` }}
+   ```
+
+4. **JSON出力の強制**:
+   - "Your response must be ONLY a valid JSON object"
+   - "NO markdown code blocks"
+   - "Use the exact field names specified below"
+
+---
+
+### 🔄 完全なデータフローパターン
+
+#### WF-B成功パターン
+
+```
+1. Google Sheets Get
+   ↓
+   row_data: {status, trending_keyword, abstract, segment, ...}
+
+2. Function - Filter published
+   ↓
+   filtered_rows with row_id, sheet_url
+
+3. Split In Batches (size=1)
+   ↓
+   単一行データ
+
+4. Project Config
+   ↓
+   config: {project_name, default_segment}
+
+5. Merge (combine all)
+   ↓
+   row_data + config
+
+6. Function - Preprocess
+   ↓
+   {row_id, sheet_url, row: {...}}
+
+7. AI Agent (gpt-4o-mini)
+   prompt: ={{ `...${JSON.stringify($json.row, null, 2)}...` }}
+   ↓
+   {output: "JSON string"}
+
+8. Function - Validate Schema
+   const aiOutput = $input.item.json.output;
+   const cleanedOutput = aiOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+   const parsedData = JSON.parse(cleanedOutput);
+   // validate...
+   return {json: {...parsedData, validation_passed: true}};
+   ↓
+   {next_decision, next_action, next_segment, next_keyword_idea, insights[], reasoning, validation_passed, validated_at}
+
+9. Google Sheets Update (Append Row)
+   next_decision: ={{ $json.next_decision }}
+   next_action: ={{ $json.next_action }}
+   next_segment: ={{ $json.next_segment }}
+   next_keyword_idea: ={{ $json.next_keyword_idea }}
+   insights_json: ={{ JSON.stringify($json.insights) }}
+   reasoning: ={{ $json.reasoning }}
+   analyzed_at: ={{ $json.validated_at }}
+   ↓
+   Google Sheets書き込み成功
+
+10. Loop Back → Split In Batches (次の行へ)
+```
+
+---
+
+### 📋 Phase 0チェックリスト更新
+
+#### AI Agent + JSON出力パイプラインの追加検証項目
+
+**設計段階**:
+- [ ] AI Agentの出力形式を確認（`{output: "JSON string"}` 形式）
+- [ ] Output Parser使用 vs 手動パース処理の選択
+- [ ] JSONスキーマの明示的な定義
+- [ ] 文字数制限・enum値の設計
+
+**実装段階**:
+- [ ] AI Agent プロンプト: `={{ }}` で式評価を明示
+- [ ] 変数展開: テンプレートリテラルまたはarray join使用
+- [ ] Function - Validate Schema: `$input.item.json.output` 抽出処理
+- [ ] Markdownコードブロッククリーンアップ（```json```除去）
+- [ ] エラーメッセージ: 文字列連結（`+`）使用、テンプレートリテラル禁止
+
+**テスト段階**:
+- [ ] AI Agentが実際のデータを受け取っているか確認
+- [ ] JSON parseエラーの有無
+- [ ] スキーマバリデーション通過確認
+- [ ] 下流ノード（Google Sheets等）でフィールドアクセス可能か
+
+---
+
+### 🎯 再発防止のための原則
+
+#### 1. Code ノード JavaScript 記述原則
+
+```javascript
+// ✅ DO: 文字列連結でエラーメッセージ構築
+throw new Error('Error: ' + variable);
+
+// ❌ DON'T: テンプレートリテラルの複数行
+throw new Error(`Error: ${variable}
+more text`);
+```
+
+#### 2. AI Agent プロンプト記述原則
+
+```javascript
+// ✅ DO: {{ }} + テンプレートリテラル
+={{ `prompt text ${variable} more text` }}
+
+// ✅ DO: {{ }} + array join
+={{ ["line1", variable, "line2"].join("\n") }}
+
+// ❌ DON'T: 文字列連結が式評価されない
+="text" + variable + "more text"
+```
+
+#### 3. AI Agent 出力処理原則
+
+```javascript
+// ✅ DO: .output抽出 → clean → parse → validate
+const aiOutput = $input.item.json.output;
+const cleanedOutput = aiOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+const parsedData = JSON.parse(cleanedOutput);
+// validate schema...
+return {json: {...parsedData}};
+
+// ❌ DON'T: 直接 $json にアクセス
+const data = $json.next_decision; // undefined
+```
+
+---
+
+### 📚 参考リソース
+
+**成果物**:
+- `/Users/yuichiroooosuger/Desktop/n8n-workflows/now/2025-11-24_01-59_function-validate-schema-fixed.js` - 完全なバリデーション実装
+- `/Users/yuichiroooosuger/Desktop/n8n-workflows/now/2025-11-23_22-22_WF-B-backup.json` - 修正前のワークフロー
+
+**検証実行**:
+- Execution 3952: Function - Validate Schema構文エラー
+- Execution 3955: Google Sheets Update設定エラー
+- Execution 3959: AI Agent式評価エラー
+- Execution 3962: 全ノード成功（✅ 本番稼働可能）
+
+**AI分析結果例** (Execution 3962):
+```json
+{
+  "next_decision": "pause",
+  "next_action": "Reassess content quality and targeting for Cold segment; consider updating article with more engaging visuals and examples.",
+  "next_segment": "Cold",
+  "next_keyword_idea": "AI導入 効果",
+  "insights": [
+    "Current article has zero PV and conversions, indicating low engagement.",
+    "Segment is Cold, which typically requires awareness-raising strategies.",
+    "Trending keyword is relevant but the content lacks traction.",
+    "Improvement needed before scaling."
+  ],
+  "reasoning": "PV is 0 and conversion is 0%, both below thresholds for improvement or scaling; segment is Cold, meeting criteria for pause to reassess strategy before further promotion."
+}
+```
+
+---
+
+### ✅ 検証完了
+
+- ✅ Code ノード構文エラー解決
+- ✅ AI Agent JSON出力パース処理実装
+- ✅ AI Agent プロンプト式評価修正
+- ✅ Google Sheets フィールドマッピング修正
+- ✅ 完全パイプライン実行成功（Execution 3962）
+
+**WF-Bは本番環境で稼働可能です**。
+
+---
+
+## 11. Google Sheets ノード制約事項
+
+### 🚨 Critical: Google Sheets Update ノードの0件出力問題
+
+#### 問題の発見経緯
+
+WF-B（記事分析ワークフロー）構築時、Google Sheets Update ノードが書き込み操作後に **0件の出力** を返すことが判明。これにより、後続ノードが実行されない問題が発生。
+
+**発生状況**:
+```
+Function - Validate Schema
+    └─→ Google Sheets - Update Row
+          └─→ Slack - Send Message  ← 実行されない！
+```
+
+#### 原因
+
+Google Sheets Update ノード（Resource: `sheet`, Operation: `update`）は、成功しても `outputItems: 0` を返すケースがある。n8nのデータフロー制御により、0件出力のノードから後続ノードは実行されない。
+
+#### 解決策: 並列接続パターン
+
+後続処理が必要な場合、Update ノードと並列に接続する：
+
+```
+Function - Validate Schema
+    ├─→ Google Sheets - Update Row（書き込み用）
+    └─→ Slack - Send Message（後続処理用）
+```
+
+**接続構造**:
+```json
+{
+  "connections": {
+    "Function - Validate Schema": {
+      "main": [
+        [
+          { "node": "Google Sheets - Update Row", "type": "main", "index": 0 },
+          { "node": "Slack - Send Message", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+}
+```
+
+### 🚨 matchingColumns パラメータの要件
+
+#### ルール1: カラム名は実際のシートヘッダーと完全一致が必要
+
+```javascript
+// ❌ エラー: 存在しないカラムを指定
+{
+  "matchingColumns": ["row_number"],  // シートに row_number カラムがない
+  "columns": {
+    "mappingMode": "defineBelow",
+    "value": {
+      "next_decision": "={{ $json.next_decision }}"
+    }
+  }
+}
+// エラー: "The 'Column to Match On' parameter is required"
+
+// ✅ 正しい: 実際のシートカラムを指定
+{
+  "matchingColumns": ["article_id"],  // シートに article_id カラムが存在
+  "columns": {
+    "mappingMode": "defineBelow",
+    "value": {
+      "next_decision": "={{ $json.next_decision }}"
+    }
+  }
+}
+```
+
+#### ルール2: カラム名の大文字・小文字も一致させる
+
+Google Sheets のカラム名が `Article_ID` なら、`matchingColumns` も `"Article_ID"` と指定する。
+
+### 🚨 行番号（row_number）の取得と伝播
+
+#### 問題: Google Sheets Read ノードは行番号を返さない
+
+Google Sheets Read ノードの出力には、行番号情報が含まれない。これにより、Update 操作で「どの行を更新するか」を特定できない問題が発生。
+
+#### 解決策: Code ノードで行番号を手動追加
+
+**Google Sheets Read 直後に追加するCode ノード**:
+```javascript
+// Function - Add Row Numbers
+const items = $input.all();
+const results = [];
+
+for (let i = 0; i < items.length; i++) {
+  results.push({
+    json: {
+      ...items[i].json,
+      row_number: i + 2  // ヘッダー行(1) + 0ベースインデックス
+    }
+  });
+}
+
+return results;
+```
+
+**行番号計算の理由**:
+- Google Sheets の行番号は 1 から開始
+- 行 1 はヘッダー
+- データは行 2 以降
+- 0ベースインデックス `i` に +2 することで、正しい行番号を取得
+
+#### 🚨 Critical: row_number が 0 の場合の範囲エラー
+
+```javascript
+// ❌ row_number = 0 の場合
+// 生成される範囲: "ideas!N0"
+// エラー: "Invalid data[0]: Unable to parse range: ideas!N0"
+
+// Google Sheets の有効な行番号は 1 以上
+// 行 0 は存在しない
+```
+
+**検証コードの追加推奨**:
+```javascript
+if (!row_number || row_number < 2) {
+  throw new Error(`Invalid row_number: ${row_number}. Must be >= 2 (row 1 is header)`);
+}
+```
+
+### データフロー確認パターン
+
+Google Sheets を使用するワークフローでは、以下のデータフローを検証：
+
+```
+1. Google Sheets - Read Row(s)
+   ↓
+   {status, segment, abstract, pv, likes, ...}  ← row_number なし
+
+2. Function - Add Row Numbers
+   ↓
+   {status, segment, abstract, pv, likes, ..., row_number: 2}  ← 追加
+
+3. Split In Batches / Loop Over Items
+   ↓
+   各アイテムに row_number が含まれている
+
+4. 処理ノード群
+   ↓
+   row_number を維持して伝播
+
+5. Function - Validate Schema
+   ↓
+   {next_decision, ..., row_number: 2}  ← 維持されていることを確認
+
+6. Google Sheets - Update Row
+   matchingColumns または Range で row_number を使用
+```
+
+---
+
+## 12. n8n MCP API 使用時の注意事項
+
+### 🚨 Critical: n8n_update_full_workflow の必須パラメータ
+
+#### ルール1: `name` パラメータは必須
+
+```javascript
+// ❌ エラー: name パラメータ不足
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "2mBYCQMjW2Vw1Xaa",
+  nodes: [...],
+  connections: {...}
+})
+// エラー: "Invalid request: request/body must have required property 'name'"
+
+// ✅ 正しい: name パラメータを含める
+mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "2mBYCQMjW2Vw1Xaa",
+  name: "WF-B: Analyze & Suggest Next Actions",  // 必須
+  nodes: [...],
+  connections: {...}
+})
+```
+
+#### ルール2: 既存ワークフロー更新時のname取得
+
+ワークフロー更新前に `n8n_get_workflow` で現在の name を取得して使用：
+
+```javascript
+// 1. 現在のワークフロー情報を取得
+const workflow = await mcp__n8n-mcp__n8n_get_workflow({ id: "2mBYCQMjW2Vw1Xaa" });
+
+// 2. 取得した name を使用して更新
+await mcp__n8n-mcp__n8n_update_full_workflow({
+  id: "2mBYCQMjW2Vw1Xaa",
+  name: workflow.name,  // 既存の name を維持
+  nodes: [...],
+  connections: {...}
+});
+```
+
+### n8n_update_partial_workflow の制限
+
+#### 制限事項
+
+`n8n_update_partial_workflow` は差分更新用のAPIだが、以下の制限がある：
+
+1. **Diff engine エラー**: 複雑なノード構造変更で失敗することがある
+2. **ノード追加/削除**: 新規ノード追加や既存ノード削除は失敗しやすい
+3. **接続変更**: connections の変更は特にエラーが発生しやすい
+
+#### 推奨事項
+
+**複雑な更新には `n8n_update_full_workflow` を使用**:
+- ノード追加・削除
+- 接続構造の変更
+- 複数ノードの同時更新
+
+**`n8n_update_partial_workflow` は以下の場合のみ使用**:
+- 単一ノードのパラメータ変更
+- シンプルな設定値の更新
+
+### API呼び出しベストプラクティス
+
+```javascript
+// 推奨: 完全なワークフロー更新フロー
+async function updateWorkflow(workflowId, updates) {
+  // 1. 現在の状態を取得
+  const current = await mcp__n8n-mcp__n8n_get_workflow({ id: workflowId });
+
+  // 2. ノードと接続を更新
+  const updatedNodes = applyNodeUpdates(current.nodes, updates);
+  const updatedConnections = applyConnectionUpdates(current.connections, updates);
+
+  // 3. Full Update で反映（name を含める）
+  await mcp__n8n-mcp__n8n_update_full_workflow({
+    id: workflowId,
+    name: current.name,
+    nodes: updatedNodes,
+    connections: updatedConnections
+  });
+
+  // 4. 検証
+  const result = await mcp__n8n-mcp__n8n_validate_workflow({ id: workflowId });
+  if (result.errors?.length > 0) {
+    throw new Error(`Validation failed: ${JSON.stringify(result.errors)}`);
+  }
+}
+```
+
+---
+
 **このナレッジベースは実際のワークフロー構築経験から抽出されたものです。**
 **新しいワークフロー構築時にこのドキュメントを参照し、同じ過ちを繰り返さないようにしてください。**
 
-**最終更新**: 2025-11-04
+**最終更新**: 2025-11-25
 
 **出典**:
 - WF6 (tkmG4YSZyi5RLiPw): note記事自動生成 - HTTP Request Node v4設定、n8n式構文 (Execution 816-823)
 - WF7 (Phase1-5 + File Server 6 workflows): SNS動画生成パイプライン - Railway Webhook制限対応、File Server設計パターン (2025-11-01)
+- WF-A (7isXtFeTvjKuW5GD): Editorial Ideas→Note Draft生成 - Error Handler実装パターン、n8nエラーデータ構造制限対応 (2025-11-22, Version 47)
 - WF7 Phase4 (xvlnFeJJwHKMHBwK): Execute Commandノード改行問題、トラブルシューティング (Execution 101→146, 2025-11-04)
+- WF-B (2mBYCQMjW2Vw1Xaa): AI Agent分析パイプライン - AI Agent JSON出力パース処理、Code ノード構文制限、プロンプト式評価パターン (Execution 3952-3962, 2025-11-24)
+- WF-B (2mBYCQMjW2Vw1Xaa): Google Sheets Update 0件出力問題、row_number伝播問題、並列接続パターン、n8n MCP API注意事項 (Execution 4199+, 2025-11-25)
